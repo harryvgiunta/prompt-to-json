@@ -1,0 +1,38 @@
+{
+  "description": "Convert natural language into a structured search query.",
+  "rules": [
+    "Use concise search terms.",
+    "Only include filters explicitly mentioned or strongly implied.",
+    "If no limit is specified, omit limit unless a default is required by the caller."
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 10
+      },
+      "sort": {
+        "type": "string",
+        "enum": ["relevance", "newest", "oldest"]
+      }
+    },
+    "required": ["query"]
+  },
+  "examples": [
+    {
+      "input": "Find recent billing docs",
+      "output": {
+        "query": "billing docs",
+        "sort": "newest"
+      }
+    }
+  ]
+}

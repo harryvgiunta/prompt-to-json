@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>prompt-to-json Studio</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div>
+        <p class="eyebrow">prompt-to-json</p>
+        <h1>Studio</h1>
+      </div>
+      <div class="hero-card" aria-label="How this studio works">
+        <span class="pill">No API keys in manual mode</span>
+        <span class="pill">Local Studio server</span>
+        <span class="pill">JSON Schema validation</span>
+      </div>
+    </header>
+
+    <main class="studio-shell">
+      <aside class="panel sidebar">
+        <div class="panel-title-row">
+          <div>
+            <p class="step-label">Step 1</p>
+            <h2>Choose a contract</h2>
+          </div>
+          <button id="reloadContracts" class="secondary-button" type="button">Reload contracts</button>
+        </div>
+
+        <label class="field-label" for="contractSelect">Contract</label>
+        <select id="contractSelect"></select>
+        <p id="contractDescription" class="muted">Loading contracts…</p>
+
+        <div class="quick-actions" aria-label="Example actions">
+          <button id="useExampleInput" class="secondary-button" type="button">Use example input</button>
+          <button id="useExampleOutput" class="secondary-button" type="button">Use example JSON</button>
+          <button id="useInvalidExample" class="secondary-button" type="button">Use invalid JSON</button>
+        </div>
+
+        <details open>
+          <summary>Rules</summary>
+          <ul id="rulesList" class="rules-list"></ul>
+        </details>
+
+        <details>
+          <summary>Schema</summary>
+          <pre id="schemaPreview" class="code-block small"></pre>
+        </details>
+
+        <details>
+          <summary>Examples</summary>
+          <pre id="examplesPreview" class="code-block small"></pre>
+        </details>
+
+        <div class="note-box">
+          Add <code>.json</code> contracts to <code>json-contracts/</code>, then Reload.
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <nav class="mode-tabs" aria-label="Studio mode">
+          <button class="tab-button active" type="button" data-mode="llm">LLM API key mode</button>
+          <button class="tab-button" type="button" data-mode="manual">Manual mode</button>
+        </nav>
+
+        <section id="manualModePanel" class="mode-panel hidden">
+          <section class="panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="step-label">Manual step 2</p>
+                <h2>Build a contract payload</h2>
+              </div>
+            </div>
+
+            <p class="muted">No provider key required. Copy this payload into any model or agent, then paste the model JSON back here.</p>
+
+            <label class="field-label" for="sourceInput">Input to convert</label>
+            <textarea id="sourceInput" class="text-area" spellcheck="false" placeholder="Example: Urgent, users cannot log in after SSO update."></textarea>
+
+            <label class="field-label stacked-label" for="contextInput">Extra context JSON optional</label>
+            <textarea id="contextInput" class="text-area context-area" spellcheck="false" placeholder='{"current_datetime":"2026-05-03T00:00:00Z","email":"JohnnyAppleseed@gmail.com"}'></textarea>
+            <p class="muted small-copy">Use this for system variables. Context is included in the contract payload but final JSON still must match the selected schema.</p>
+
+            <div class="button-row">
+              <button id="buildContract" type="button">Get JSON contract</button>
+              <button id="copyJsonContract" class="secondary-button" type="button" disabled>Copy payload</button>
+            </div>
+
+            <div id="jsonContractStatus" class="status hidden" role="status"></div>
+            <pre id="jsonContractPayload" class="code-block placeholder">The MCP-style get_json_contract payload will appear here.</pre>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="step-label">Manual step 3</p>
+                <h2>Paste model JSON and validate it</h2>
+              </div>
+            </div>
+
+            <label class="field-label" for="jsonOutput">Model or agent JSON</label>
+            <textarea id="jsonOutput" class="text-area json-area" spellcheck="false" placeholder='{"summary":"Users cannot log in","severity":"critical","category":"authentication"}'></textarea>
+
+            <div class="button-row">
+              <button id="validateJson" type="button">Validate JSON</button>
+            </div>
+
+            <div id="validationStatus" class="status hidden" role="status"></div>
+            <ul id="validationErrors" class="error-list"></ul>
+            <pre id="validationPayload" class="code-block placeholder">Validation results will appear here.</pre>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="step-label">Manual step 4</p>
+                <h2>Get a repair contract when validation fails</h2>
+              </div>
+            </div>
+
+            <p class="muted">Give this repair payload back to your chosen model, then validate the repaired JSON.</p>
+
+            <div class="button-row">
+              <button id="buildRepair" type="button" disabled>Get repair contract</button>
+              <button id="copyRepair" class="secondary-button" type="button" disabled>Copy repair payload</button>
+            </div>
+
+            <div id="repairStatus" class="status hidden" role="status"></div>
+            <pre id="repairPayload" class="code-block placeholder">Repair payloads will appear here after a failed validation.</pre>
+          </section>
+        </section>
+
+        <section id="llmModePanel" class="mode-panel">
+          <section class="panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="step-label">LLM step 2</p>
+                <h2>Enter provider key and model</h2>
+              </div>
+            </div>
+
+            <p class="muted">Keys are sent only to this local Studio server for the current request. They are saved only if you tick <strong>Save config</strong>, which writes to your local <code>.env</code>.</p>
+
+            <div class="form-grid">
+              <div>
+                <label class="field-label" for="llmProvider">Provider</label>
+                <select id="llmProvider"></select>
+              </div>
+              <div>
+                <label class="field-label" for="llmModel">Model</label>
+                <input id="llmModel" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="gpt-4.1-mini" />
+              </div>
+              <div>
+                <label class="field-label" for="llmThinking">Thinking</label>
+                <select id="llmThinking">
+                  <option value="off">off</option>
+                  <option value="low">low</option>
+                  <option value="medium" selected>medium</option>
+                  <option value="high">high</option>
+                  <option value="xhigh">xhigh</option>
+                  <option value="auto">auto/omit</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label" for="llmApiKey">API key</label>
+                <input id="llmApiKey" class="text-input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste key for this request" />
+              </div>
+            </div>
+
+            <details class="advanced-settings">
+              <summary>Advanced provider settings</summary>
+              <label class="field-label" for="llmBaseUrl">Base URL override</label>
+              <input id="llmBaseUrl" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="Leave blank to use the provider default" />
+              <p class="muted small-copy">Leave this blank for built-in cloud providers. Only fill it for Custom OpenAI-compatible providers or if your provider gives you a different endpoint.</p>
+              <p class="muted small-copy">OpenAI-compatible providers use <code>/chat/completions</code>. Ollama uses <code>/api/chat</code>. Anthropic uses <code>/v1/messages</code>.</p>
+            </details>
+
+            <div class="save-options" aria-label="Optional local config saving">
+              <label class="checkbox-field" for="llmSaveConfig">
+                <input id="llmSaveConfig" type="checkbox" />
+                <span>Save config to local <code>.env</code> after generate/repair</span>
+              </label>
+              <label class="checkbox-field" for="llmSaveAsDefault">
+                <input id="llmSaveAsDefault" type="checkbox" />
+                <span>Save as default provider/model</span>
+              </label>
+              <p class="muted small-copy">Leave unchecked to avoid writing anything. When enabled, API keys are saved to provider-specific env vars such as <code>OPENAI_API_KEY</code>; custom providers use <code>LLM_API_KEY</code>.</p>
+            </div>
+
+            <div class="button-row">
+              <button id="clearApiKey" class="secondary-button" type="button">Clear key</button>
+            </div>
+
+            <div id="llmConfigStatus" class="status hidden" role="status"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title-row">
+              <div>
+                <p class="step-label">LLM step 3</p>
+                <h2>Generate and validate JSON</h2>
+              </div>
+            </div>
+
+            <label class="field-label" for="llmSourceInput">Input to convert</label>
+            <textarea id="llmSourceInput" class="text-area" spellcheck="false" placeholder="Example: Urgent, users cannot log in after SSO update."></textarea>
+
+            <label class="field-label stacked-label" for="llmContextInput">Extra context JSON optional</label>
+            <textarea id="llmContextInput" class="text-area context-area" spellcheck="false" placeholder='{"current_datetime":"2026-05-03T00:00:00Z","email":"JohnnyAppleseed@gmail.com"}'></textarea>
+            <p class="muted small-copy">Context is sent to the selected provider in LLM API key mode. Do not include secrets unless the provider should receive them.</p>
+
+            <div class="button-row">
+              <button id="llmUseExampleInput" class="secondary-button" type="button">Use example input</button>
+              <button id="llmGenerate" type="button" disabled>Generate JSON</button>
+            </div>
+
+            <label class="field-label" for="llmJsonOutput">Generated JSON</label>
+            <textarea id="llmJsonOutput" class="text-area json-area" spellcheck="false" placeholder='{"summary":"Users cannot log in","severity":"critical","category":"authentication"}'></textarea>
+
+            <div class="button-row">
+              <button id="llmValidate" type="button" disabled>Validate</button>
+              <button id="llmRepair" class="secondary-button" type="button" disabled>Repair with same provider</button>
+              <button id="llmCopyJson" class="secondary-button" type="button" disabled>Copy JSON</button>
+            </div>
+
+            <div id="llmOutputStatus" class="status hidden" role="status"></div>
+            <ul id="llmValidationErrors" class="error-list"></ul>
+            <pre id="llmPayload" class="code-block placeholder">Provider result and validation details will appear here.</pre>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

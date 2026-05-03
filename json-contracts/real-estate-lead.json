@@ -1,0 +1,95 @@
+{
+  "description": "Convert buyer, renter, seller, or tenant messages into a structured real estate lead profile.",
+  "rules": [
+    "Only include budget, bedroom count, locations, and timing when stated or strongly implied.",
+    "Use buy for purchase leads, rent for rental leads, sell for seller leads, and lease for commercial leasing leads.",
+    "Use unknown when transaction type, property type, timeline, financing, or contact preference is not clear.",
+    "Normalize must-haves into short phrases such as parking, yard, pet friendly, near transit, or home office.",
+    "Do not make lending, legal, or fair-housing judgments."
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "transactionType": {
+        "type": "string",
+        "enum": ["buy", "rent", "sell", "lease", "unknown"]
+      },
+      "propertyType": {
+        "type": "string",
+        "enum": [
+          "single_family",
+          "condo",
+          "townhouse",
+          "apartment",
+          "multifamily",
+          "land",
+          "commercial",
+          "unknown"
+        ]
+      },
+      "locationQuery": {
+        "type": "string"
+      },
+      "budgetMin": {
+        "type": "number",
+        "minimum": 0
+      },
+      "budgetMax": {
+        "type": "number",
+        "minimum": 0
+      },
+      "bedrooms": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "bathrooms": {
+        "type": "number",
+        "minimum": 0
+      },
+      "timeline": {
+        "type": "string",
+        "enum": ["asap", "0_3_months", "3_6_months", "6_12_months", "browsing", "unknown"]
+      },
+      "mustHaves": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "financingStatus": {
+        "type": "string",
+        "enum": ["pre_approved", "cash", "needs_financing", "unknown"]
+      },
+      "contactPreference": {
+        "type": "string",
+        "enum": ["call", "text", "email", "unknown"]
+      }
+    },
+    "required": [
+      "transactionType",
+      "propertyType",
+      "timeline",
+      "mustHaves",
+      "financingStatus",
+      "contactPreference"
+    ]
+  },
+  "examples": [
+    {
+      "input": "We're pre-approved and want to buy a 3 bed condo in Austin under 650k within the next two months. Need parking and a small office. Text is best.",
+      "output": {
+        "transactionType": "buy",
+        "propertyType": "condo",
+        "locationQuery": "Austin",
+        "budgetMax": 650000,
+        "bedrooms": 3,
+        "timeline": "0_3_months",
+        "mustHaves": ["parking", "home office"],
+        "financingStatus": "pre_approved",
+        "contactPreference": "text"
+      }
+    }
+  ]
+}

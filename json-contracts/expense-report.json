@@ -1,0 +1,98 @@
+{
+  "description": "Convert receipts, reimbursement notes, or expense messages into a structured finance expense report line item.",
+  "rules": [
+    "Only extract merchant, amount, date, project code, and payment method when stated.",
+    "Use ISO 4217 currency codes such as USD, EUR, GBP, CAD, or AUD.",
+    "Set reimbursable to true when the user paid personally or asks to be reimbursed; set false for company card expenses unless reimbursement is requested.",
+    "Policy flags are only warnings for review. Do not approve or reject expenses.",
+    "Use other for category when the expense does not fit the allowed categories."
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "merchant": {
+        "type": "string"
+      },
+      "transactionDate": {
+        "type": "string",
+        "format": "date"
+      },
+      "amount": {
+        "type": "number",
+        "minimum": 0
+      },
+      "currency": {
+        "type": "string",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "meals",
+          "travel",
+          "lodging",
+          "software",
+          "office_supplies",
+          "advertising",
+          "contractor",
+          "education",
+          "utilities",
+          "other"
+        ]
+      },
+      "paymentMethod": {
+        "type": "string",
+        "enum": ["personal_card", "company_card", "cash", "ach", "unknown"]
+      },
+      "reimbursable": {
+        "type": "boolean"
+      },
+      "projectCode": {
+        "type": "string"
+      },
+      "taxDeductibleCandidate": {
+        "type": "boolean"
+      },
+      "policyFlags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "missing_receipt",
+            "over_limit",
+            "alcohol",
+            "weekend",
+            "duplicate_risk",
+            "international",
+            "other"
+          ]
+        },
+        "default": []
+      },
+      "notes": {
+        "type": "string",
+        "maxLength": 500
+      }
+    },
+    "required": ["category", "paymentMethod", "reimbursable", "taxDeductibleCandidate", "policyFlags"]
+  },
+  "examples": [
+    {
+      "input": "Need reimbursement for $84.23 USD at Delta on 2026-04-30 for the client trip, project ACME-42. Paid with my personal card.",
+      "output": {
+        "merchant": "Delta",
+        "transactionDate": "2026-04-30",
+        "amount": 84.23,
+        "currency": "USD",
+        "category": "travel",
+        "paymentMethod": "personal_card",
+        "reimbursable": true,
+        "projectCode": "ACME-42",
+        "taxDeductibleCandidate": true,
+        "policyFlags": [],
+        "notes": "Client trip expense."
+      }
+    }
+  ]
+}

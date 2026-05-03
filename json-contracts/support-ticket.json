@@ -1,0 +1,37 @@
+{
+  "description": "Convert natural language into a support ticket object.",
+  "rules": [
+    "If the user says urgent, severity must be critical.",
+    "Summary must be under 80 characters.",
+    "Category must be authentication, billing, bug, feature_request, or other."
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "severity": {
+        "type": "string",
+        "enum": ["low", "medium", "high", "critical"]
+      },
+      "category": {
+        "type": "string",
+        "enum": ["authentication", "billing", "bug", "feature_request", "other"]
+      }
+    },
+    "required": ["summary", "severity", "category"]
+  },
+  "examples": [
+    {
+      "input": "Urgent, users cannot log in after SSO update.",
+      "output": {
+        "summary": "Users cannot log in after SSO update",
+        "severity": "critical",
+        "category": "authentication"
+      }
+    }
+  ]
+}

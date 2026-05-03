@@ -1,0 +1,337 @@
+import { EventEmitter } from "node:events";
+import type { Dirent } from "node:fs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import chokidar, { type FSWatcher } from "chokidar";
+import { z } from "zod";
+import {
+  assertInsideDirectory,
+  assertSafeContractName,
+  MAX_CONTRACT_FILE_BYTES,
+  MAX_EXAMPLES,
+  MAX_SCHEMA_BYTES,
+  safeJsonSize
+} from "./security.js";
+import type {
+  ContractLoaderOptions,
+  ContractSummary,
+  LoadedContract,
+  Logger,
+  PublicContract
+} from "./types.js";
+import { validateJsonSchema } from "./validator.js";
+
+const noopLogger: Logger = {
+  debug() {},
+  info() {},
+  warn() {},
+  error() {}
+};
+
+const RequiredJsonValueSchema = z.custom<unknown>(
+  (value) => value !== undefined,
+  "value is required"
+);
+
+const ExampleSchema = z
+  .object({
+    input: RequiredJsonValueSchema,
+    output: RequiredJsonValueSchema
+  })
+  .passthrough();
+
+const ContractFileSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+    rules: z.array(z.string()).optional(),
+    schema: z
+      .unknown()
+      .refine(
+        (value) => value !== null && typeof value === "object" && !Array.isArray(value),
+        "schema must be a JSON Schema object"
+      ),
+    examples: z.array(ExampleSchema).optional()
+  })
+  .passthrough();
+
+type ReloadOptions = {
+  emitChange?: boolean;
+};
+
+type ContractLoadFailure = {
+  file: string;
+  error: Error;
+};
+
+export class ContractLoadError extends Error {
+  readonly failures: ContractLoadFailure[];
+
+  constructor(message: string, failures: ContractLoadFailure[]) {
+    super(message);
+    this.name = "ContractLoadError";
+    this.failures = failures;
+  }
+}
+
+export class ContractStore extends EventEmitter {
+  readonly contractsDir: string;
+  readonly allowInvalidContracts: boolean;
+  readonly maxContractFileBytes: number;
+  readonly maxSchemaBytes: number;
+  readonly maxExamples: number;
+
+  private readonly logger: Logger;
+  private contracts = new Map<string, LoadedContract>();
+  private watcher?: FSWatcher;
+  private reloadTimer?: NodeJS.Timeout;
+
+  constructor(options: ContractLoaderOptions) {
+    super();
+    this.contractsDir = path.resolve(options.contractsDir);
+    this.allowInvalidContracts = options.allowInvalidContracts ?? false;
+    this.maxContractFileBytes = options.maxContractFileBytes ?? MAX_CONTRACT_FILE_BYTES;
+    this.maxSchemaBytes = options.maxSchemaBytes ?? MAX_SCHEMA_BYTES;
+    this.maxExamples = options.maxExamples ?? MAX_EXAMPLES;
+    this.logger = options.logger ?? noopLogger;
+  }
+
+  async reload(options: ReloadOptions = {}): Promise<LoadedContract[]> {
+    const previousSignature = this.contractsSignature();
+    const nextContracts = await this.scanContracts();
+    this.contracts = nextContracts;
+
+    const currentNames = this.listNames();
+    if (options.emitChange ?? true) {
+      if (previousSignature !== this.contractsSignature()) {
+        this.emit("changed", currentNames);
+      }
+    }
+
+    return this.listContracts();
+  }
+
+  listContracts(): LoadedContract[] {
+    return [...this.contracts.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private contractsSignature(): string {
+    return JSON.stringify(
+      this.listContracts().map((contract) => ({
+        name: contract.name,
+        description: contract.description ?? "",
+        rules: contract.rules,
+        schema: contract.schema,
+        examples: contract.examples
+      }))
+    );
+  }
+
+  listNames(): string[] {
+    return this.listContracts().map((contract) => contract.name);
+  }
+
+  listSummaries(): ContractSummary[] {
+    return this.listContracts().map((contract) => ({
+      name: contract.name,
+      ...(contract.description ? { description: contract.description } : {})
+    }));
+  }
+
+  getContract(name: string): LoadedContract {
+    assertSafeContractName(name);
+    const contract = this.contracts.get(name);
+    if (!contract) {
+      throw new Error(`Contract not found: ${name}`);
+    }
+    return contract;
+  }
+
+  hasContract(name: string): boolean {
+    assertSafeContractName(name);
+    return this.contracts.has(name);
+  }
+
+  toPublicContract(contract: LoadedContract): PublicContract {
+    return {
+      name: contract.name,
+      ...(contract.description ? { description: contract.description } : {}),
+      rules: contract.rules,
+      schema: contract.schema,
+      examples: contract.examples
+    };
+  }
+
+  startWatching(): void {
+    if (this.watcher) return;
+
+    this.watcher = chokidar.watch(this.contractsDir, {
+      ignoreInitial: true,
+      depth: 0,
+      awaitWriteFinish: {
+        stabilityThreshold: 100,
+        pollInterval: 25
+      }
+    });
+
+    const schedule = (): void => this.scheduleReload();
+    this.watcher.on("add", schedule);
+    this.watcher.on("change", schedule);
+    this.watcher.on("unlink", schedule);
+  }
+
+  async close(): Promise<void> {
+    if (this.reloadTimer) {
+      clearTimeout(this.reloadTimer);
+      this.reloadTimer = undefined;
+    }
+
+    if (this.watcher) {
+      await this.watcher.close();
+      this.watcher = undefined;
+    }
+  }
+
+  private scheduleReload(): void {
+    if (this.reloadTimer) clearTimeout(this.reloadTimer);
+
+    this.reloadTimer = setTimeout(() => {
+      this.reloadTimer = undefined;
+      this.reload().catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn("Contract reload failed; keeping previous cache", message);
+      });
+    }, 150);
+  }
+
+  private async scanContracts(): Promise<Map<string, LoadedContract>> {
+    const failures: ContractLoadFailure[] = [];
+    const contracts = new Map<string, LoadedContract>();
+    const duplicateNames = new Set<string>();
+
+    let entries: Dirent[];
+    try {
+      entries = await fs.readdir(this.contractsDir, { withFileTypes: true });
+    } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError.code === "ENOENT") {
+        this.logger.warn("Contracts directory does not exist; no contracts loaded", this.contractsDir);
+        return contracts;
+      }
+      throw error;
+    }
+
+    const jsonFiles = entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const namesByLowercase = new Map<string, string[]>();
+    for (const entry of jsonFiles) {
+      const contractName = path.basename(entry.name, ".json");
+      const lower = contractName.toLowerCase();
+      const names = namesByLowercase.get(lower) ?? [];
+      names.push(entry.name);
+      namesByLowercase.set(lower, names);
+    }
+
+    for (const [lowerName, names] of namesByLowercase.entries()) {
+      if (names.length > 1) {
+        duplicateNames.add(lowerName);
+        failures.push({
+          file: names.join(", "),
+          error: new Error(`Duplicate contract name: ${names.join(", ")}`)
+        });
+      }
+    }
+
+    for (const entry of jsonFiles) {
+      const contractName = path.basename(entry.name, ".json");
+      if (duplicateNames.has(contractName.toLowerCase())) continue;
+
+      try {
+        const loaded = await this.loadContractFile(entry.name, contractName);
+        contracts.set(loaded.name, loaded);
+      } catch (error) {
+        failures.push({
+          file: entry.name,
+          error: error instanceof Error ? error : new Error(String(error))
+        });
+      }
+    }
+
+    if (failures.length) {
+      if (this.allowInvalidContracts) {
+        for (const failure of failures) {
+          this.logger.warn(`Skipping invalid contract ${failure.file}`, failure.error.message);
+        }
+      } else {
+        const details = failures
+          .map((failure) => `${failure.file}: ${failure.error.message}`)
+          .join("; ");
+        throw new ContractLoadError(`Failed to load JSON contracts: ${details}`, failures);
+      }
+    }
+
+    return contracts;
+  }
+
+  private async loadContractFile(fileName: string, contractName: string): Promise<LoadedContract> {
+    assertSafeContractName(contractName);
+
+    const filePath = path.resolve(this.contractsDir, fileName);
+    assertInsideDirectory(this.contractsDir, filePath);
+
+    const stat = await fs.stat(filePath);
+    if (stat.size > this.maxContractFileBytes) {
+      throw new Error(
+        `Contract file exceeds size limit (${stat.size} > ${this.maxContractFileBytes} bytes)`
+      );
+    }
+
+    const raw = await fs.readFile(filePath, "utf8");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Invalid JSON: ${message}`);
+    }
+
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      Object.prototype.hasOwnProperty.call(parsed, "version")
+    ) {
+      throw new Error("Contract must not include a version field; use Git for versioning");
+    }
+
+    const result = ContractFileSchema.safeParse(parsed);
+    if (!result.success) {
+      throw new Error(`Invalid contract shape: ${result.error.issues.map((issue) => issue.message).join(", ")}`);
+    }
+
+    const rules = result.data.rules ?? [];
+    const examples = result.data.examples ?? [];
+
+    if (examples.length > this.maxExamples) {
+      throw new Error(`Contract examples exceed limit (${examples.length} > ${this.maxExamples})`);
+    }
+
+    const schemaSize = safeJsonSize(result.data.schema);
+    if (schemaSize > this.maxSchemaBytes) {
+      throw new Error(`Contract schema exceeds size limit (${schemaSize} > ${this.maxSchemaBytes} bytes)`);
+    }
+
+    validateJsonSchema(result.data.schema);
+
+    return {
+      name: contractName,
+      ...(result.data.description ? { description: result.data.description } : {}),
+      rules,
+      schema: result.data.schema as Record<string, unknown>,
+      examples,
+      sourcePath: filePath
+    };
+  }
+}

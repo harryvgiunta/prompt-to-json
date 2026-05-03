@@ -1,0 +1,44 @@
+{
+  "description": "Convert natural language into a structured API filter object.",
+  "rules": [
+    "Only include fields that are explicitly requested or clearly implied.",
+    "Use ISO 8601 dates for createdAfter and createdBefore.",
+    "Status must be open, closed, pending, or archived."
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": ["open", "closed", "pending", "archived"]
+      },
+      "assignee": {
+        "type": "string"
+      },
+      "createdAfter": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "createdBefore": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 500
+      }
+    }
+  },
+  "examples": [
+    {
+      "input": "Show open tickets assigned to Priya, max 50",
+      "output": {
+        "status": "open",
+        "assignee": "Priya",
+        "limit": 50
+      }
+    }
+  ]
+}

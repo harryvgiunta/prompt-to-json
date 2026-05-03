@@ -1,0 +1,52 @@
+{
+  "name": "prompt-to-json",
+  "version": "0.1.0",
+  "description": "A git-controlled MCP contract server for natural-language-to-JSON workflows.",
+  "type": "module",
+  "bin": {
+    "prompt-to-json": "./dist/index.js"
+  },
+  "files": [
+    ".pi",
+    "dist",
+    "docs",
+    "examples",
+    "json-contracts",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc",
+    "test": "vitest run",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "studio": "npm run build && node examples/studio/server.mjs",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "json-schema",
+    "prompt",
+    "contracts",
+    "local"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "chokidar": "4.0.3",
+    "typebox": "1.1.33",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "description": "Convert patient messages into a structured healthcare intake and triage object.",
+  "rules": [
+    "Do not diagnose, prescribe, or provide medical advice.",
+    "Only extract symptoms, timing, severity, and requested action from the user's message.",
+    "If the user mentions chest pain, trouble breathing, stroke symptoms, severe bleeding, loss of consciousness, or suicidal intent, set severity to emergency and requiresImmediateAttention to true.",
+    "Use unknown when the patient type or contact preference is not stated.",
+    "Keep chiefComplaint short and patient-facing."
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "chiefComplaint": {
+        "type": "string",
+        "maxLength": 120
+      },
+      "symptoms": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "duration": {
+        "type": "string",
+        "description": "How long symptoms have been present, in the user's words."
+      },
+      "severity": {
+        "type": "string",
+        "enum": ["mild", "moderate", "severe", "emergency", "unknown"]
+      },
+      "requestedAction": {
+        "type": "string",
+        "enum": [
+          "schedule_appointment",
+          "nurse_callback",
+          "prescription_refill",
+          "billing_question",
+          "records_request",
+          "urgent_triage",
+          "other"
+        ]
+      },
+      "patientType": {
+        "type": "string",
+        "enum": ["new", "existing", "unknown"]
+      },
+      "redFlags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "preferredContactMethod": {
+        "type": "string",
+        "enum": ["phone", "email", "portal", "unknown"]
+      },
+      "requiresImmediateAttention": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "chiefComplaint",
+      "symptoms",
+      "severity",
+      "requestedAction",
+      "patientType",
+      "redFlags",
+      "preferredContactMethod",
+      "requiresImmediateAttention"
+    ]
+  },
+  "examples": [
+    {
+      "input": "I'm an existing patient. I've had chest tightness and trouble breathing for the last hour. Please have a nurse call me.",
+      "output": {
+        "chiefComplaint": "Chest tightness and trouble breathing",
+        "symptoms": ["chest tightness", "trouble breathing"],
+        "duration": "for the last hour",
+        "severity": "emergency",
+        "requestedAction": "urgent_triage",
+        "patientType": "existing",
+        "redFlags": ["chest pain or tightness", "trouble breathing"],
+        "preferredContactMethod": "phone",
+        "requiresImmediateAttention": true
+      }
+    }
+  ]
+}

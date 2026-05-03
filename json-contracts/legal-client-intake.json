@@ -1,0 +1,99 @@
+{
+  "description": "Convert prospective client messages into a structured legal intake object for routing and conflict checks.",
+  "rules": [
+    "Do not provide legal advice or predict legal outcomes.",
+    "Capture jurisdiction when the user mentions a city, state, country, court, or agency.",
+    "Deadlines must be ISO 8601 dates when a concrete date is provided.",
+    "Set urgency to high when the user mentions a hearing, filing deadline, eviction, arrest, termination, demand letter, or deadline within 14 days.",
+    "Include names of opposing parties, employers, landlords, businesses, or agencies in conflictsCheckNames when stated."
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "matterType": {
+        "type": "string",
+        "enum": [
+          "employment",
+          "landlord_tenant",
+          "contract_review",
+          "business_formation",
+          "family",
+          "immigration",
+          "personal_injury",
+          "intellectual_property",
+          "criminal",
+          "other"
+        ]
+      },
+      "jurisdiction": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string",
+        "maxLength": 500
+      },
+      "deadlines": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "date"
+        },
+        "default": []
+      },
+      "parties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "urgency": {
+        "type": "string",
+        "enum": ["low", "medium", "high", "emergency"]
+      },
+      "requestedService": {
+        "type": "string",
+        "enum": [
+          "consultation",
+          "document_review",
+          "document_generation",
+          "litigation_help",
+          "negotiation",
+          "other"
+        ]
+      },
+      "conflictsCheckNames": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      }
+    },
+    "required": [
+      "matterType",
+      "summary",
+      "deadlines",
+      "parties",
+      "urgency",
+      "requestedService",
+      "conflictsCheckNames"
+    ]
+  },
+  "examples": [
+    {
+      "input": "I need a lawyer in California to review a severance agreement from Acme Robotics. They gave me until 2026-05-15 to sign.",
+      "output": {
+        "matterType": "employment",
+        "jurisdiction": "California",
+        "summary": "Review a severance agreement before the signing deadline.",
+        "deadlines": ["2026-05-15"],
+        "parties": ["Acme Robotics"],
+        "urgency": "high",
+        "requestedService": "document_review",
+        "conflictsCheckNames": ["Acme Robotics"]
+      }
+    }
+  ]
+}
