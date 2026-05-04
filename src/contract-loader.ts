@@ -14,6 +14,8 @@ import {
 } from "./security.js";
 import type {
   ContractLoaderOptions,
+  ContractOperation,
+  ContractOperations,
   ContractSummary,
   LoadedContract,
   Logger,
@@ -40,11 +42,28 @@ const ExampleSchema = z
   })
   .passthrough();
 
+const OperationConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    return: z.enum(["full_object", "json_patch"]).optional(),
+    rules: z.array(z.string()).optional(),
+    examples: z.array(ExampleSchema).optional()
+  })
+  .passthrough();
+
+const OperationsSchema = z
+  .object({
+    create: OperationConfigSchema.optional(),
+    edit: OperationConfigSchema.optional()
+  })
+  .catchall(OperationConfigSchema);
+
 const ContractFileSchema = z
   .object({
     name: z.string().min(1).optional(),
     description: z.string().optional(),
     rules: z.array(z.string()).optional(),
+    operations: OperationsSchema.optional(),
     schema: z
       .unknown()
       .refine(
@@ -72,6 +91,57 @@ export class ContractLoadError extends Error {
     this.name = "ContractLoadError";
     this.failures = failures;
   }
+}
+
+const DEFAULT_CREATE_OPERATION: ContractOperation = {
+  enabled: true,
+  rules: [],
+  examples: []
+};
+
+const DEFAULT_EDIT_OPERATION: ContractOperation = {
+  enabled: true,
+  return: "full_object",
+  rules: [],
+  examples: []
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeOperation(
+  operation: unknown,
+  defaults: ContractOperation
+): ContractOperation {
+  const input = isRecord(operation) ? operation : {};
+  const rules = Array.isArray(input.rules) ? input.rules.filter((rule): rule is string => typeof rule === "string") : defaults.rules;
+  const examples = Array.isArray(input.examples) ? input.examples : defaults.examples;
+  const enabled = typeof input.enabled === "boolean" ? input.enabled : defaults.enabled;
+  const returnMode = input.return === "full_object" || input.return === "json_patch" ? input.return : defaults.return;
+
+  return {
+    ...input,
+    enabled,
+    ...(returnMode ? { return: returnMode } : {}),
+    rules: [...rules],
+    examples: [...examples]
+  } as ContractOperation;
+}
+
+export function normalizeOperations(operations: unknown): ContractOperations {
+  const input = isRecord(operations) ? operations : {};
+  const normalized: Record<string, ContractOperation> = {
+    create: normalizeOperation(input.create, DEFAULT_CREATE_OPERATION),
+    edit: normalizeOperation(input.edit, DEFAULT_EDIT_OPERATION)
+  };
+
+  for (const [name, operation] of Object.entries(input)) {
+    if (name === "create" || name === "edit") continue;
+    normalized[name] = normalizeOperation(operation, DEFAULT_CREATE_OPERATION);
+  }
+
+  return normalized as ContractOperations;
 }
 
 export class ContractStore extends EventEmitter {
@@ -122,6 +192,7 @@ export class ContractStore extends EventEmitter {
         description: contract.description ?? "",
         rules: contract.rules,
         schema: contract.schema,
+        operations: contract.operations,
         examples: contract.examples
       }))
     );
@@ -157,6 +228,7 @@ export class ContractStore extends EventEmitter {
       name: contract.name,
       ...(contract.description ? { description: contract.description } : {}),
       rules: contract.rules,
+      operations: contract.operations,
       schema: contract.schema,
       examples: contract.examples
     };
@@ -312,10 +384,16 @@ export class ContractStore extends EventEmitter {
     }
 
     const rules = result.data.rules ?? [];
+    const operations = normalizeOperations(result.data.operations);
     const examples = result.data.examples ?? [];
+    const operationExamplesCount = Object.values(operations).reduce(
+      (count, operation) => count + operation.examples.length,
+      0
+    );
+    const totalExamples = examples.length + operationExamplesCount;
 
-    if (examples.length > this.maxExamples) {
-      throw new Error(`Contract examples exceed limit (${examples.length} > ${this.maxExamples})`);
+    if (totalExamples > this.maxExamples) {
+      throw new Error(`Contract examples exceed limit (${totalExamples} > ${this.maxExamples})`);
     }
 
     const schemaSize = safeJsonSize(result.data.schema);
@@ -329,6 +407,7 @@ export class ContractStore extends EventEmitter {
       name: contractName,
       ...(result.data.description ? { description: result.data.description } : {}),
       rules,
+      operations,
       schema: result.data.schema as Record<string, unknown>,
       examples,
       sourcePath: filePath

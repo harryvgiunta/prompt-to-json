@@ -37,6 +37,15 @@ const JsonContractParams = Type.Object(
 	},
 	{ additionalProperties: false },
 );
+const EditContractParams = Type.Object(
+	{
+		contract: Type.String({ description: "Contract name" }),
+		currentJson: Type.Unknown({ description: "Existing JSON value to edit" }),
+		input: Type.String({ description: "Natural-language edit instruction" }),
+		context: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Optional caller context" })),
+	},
+	{ additionalProperties: false },
+);
 const ValidateJsonParams = Type.Object(
 	{
 		contract: Type.String({ description: "Contract name" }),
@@ -64,7 +73,8 @@ const RepairContractParams = Type.Object(
 const PROMPT_TO_JSON_GUIDELINES = [
 	"Use prompt-to-json tools when the user asks to convert natural language into schema-valid JSON for a named contract.",
 	"prompt-to-json is a contract registry and validator. It does not generate JSON by itself; the active Pi model generates or repairs the JSON.",
-	"Correct flow: call ptj_get_json_contract, generate JSON yourself, call ptj_validate_json, and if invalid call ptj_get_repair_contract before validating again.",
+	"Correct create flow: call ptj_get_json_contract, generate JSON yourself, call ptj_validate_json, and if invalid call ptj_get_repair_contract before validating again.",
+	"Correct edit flow: call ptj_get_edit_contract with currentJson and the edit instruction, produce the complete edited JSON yourself, then call ptj_validate_json.",
 	"After ptj_validate_json returns valid=true, present the final JSON and mention the contract that validated it.",
 ];
 
@@ -102,6 +112,14 @@ function normalizeOptionalJsonString<T>(value: unknown): T | unknown {
 function prepareJsonContractArgs(args: unknown) {
 	if (!args || typeof args !== "object") return args as never;
 	const input = { ...(args as JsonObject) };
+	if (input.context !== undefined) input.context = normalizeOptionalJsonString(input.context);
+	return input as never;
+}
+
+function prepareEditContractArgs(args: unknown) {
+	if (!args || typeof args !== "object") return args as never;
+	const input = { ...(args as JsonObject) };
+	if (input.currentJson !== undefined) input.currentJson = normalizeOptionalJsonString(input.currentJson);
 	if (input.context !== undefined) input.context = normalizeOptionalJsonString(input.context);
 	return input as never;
 }
@@ -365,6 +383,26 @@ export default function promptToJsonMcpExtension(pi: ExtensionAPI) {
 			assertSafeContractName(params.contract);
 			return callMcpTool(ctx, "get_json_contract", {
 				contract: params.contract,
+				input: params.input,
+				context: params.context ?? {},
+			});
+		},
+	});
+
+	pi.registerTool({
+		name: "ptj_get_edit_contract",
+		label: "prompt-to-json edit contract",
+		description:
+			"Get schema, rules, current JSON, edit instructions, and input so Pi's active model can edit existing JSON for a prompt-to-json contract.",
+		promptSnippet: "Get an edit contract payload before generating complete edited JSON",
+		promptGuidelines: PROMPT_TO_JSON_GUIDELINES,
+		parameters: EditContractParams,
+		prepareArguments: prepareEditContractArgs,
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			assertSafeContractName(params.contract);
+			return callMcpTool(ctx, "get_edit_contract", {
+				contract: params.contract,
+				currentJson: params.currentJson,
 				input: params.input,
 				context: params.context ?? {},
 			});

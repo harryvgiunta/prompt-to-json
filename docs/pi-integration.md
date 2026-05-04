@@ -39,6 +39,7 @@ The extension registers these Pi tools:
 | `ptj_list_contracts` | `list_contracts` |
 | `ptj_read_contract` | `read_contract` |
 | `ptj_get_json_contract` | `get_json_contract` |
+| `ptj_get_edit_contract` | `get_edit_contract` |
 | `ptj_validate_json` | `validate_json` |
 | `ptj_get_repair_contract` | `get_repair_contract` |
 | `ptj_reload_contracts` | `reload_contracts` |
@@ -177,7 +178,7 @@ pi -e .\.pi\extensions\prompt-to-json-mcp.ts -p "Use ptj_list_contracts to list 
 Only allow prompt-to-json tools:
 
 ```powershell
-pi -e .\.pi\extensions\prompt-to-json-mcp.ts --tools ptj_list_contracts,ptj_read_contract,ptj_get_json_contract,ptj_validate_json,ptj_get_repair_contract,ptj_reload_contracts -p "Use prompt-to-json with support-ticket. Input: Urgent, users cannot log in after SSO update. Generate and validate final JSON."
+pi -e .\.pi\extensions\prompt-to-json-mcp.ts --tools ptj_list_contracts,ptj_read_contract,ptj_get_json_contract,ptj_get_edit_contract,ptj_validate_json,ptj_get_repair_contract,ptj_reload_contracts -p "Use prompt-to-json with support-ticket. Input: Urgent, users cannot log in after SSO update. Generate and validate final JSON."
 ```
 
 ## Correct mental model
@@ -191,6 +192,8 @@ The model should follow this standard loop:
 ```text
 ptj_get_json_contract
   -> model generates JSON
+ptj_get_edit_contract
+  -> model edits current JSON when requested
 ptj_validate_json
   -> if invalid: ptj_get_repair_contract
   -> model repairs JSON

@@ -60,6 +60,56 @@ describe("ContractStore", () => {
     expect(store.listNames()).toEqual(["support-ticket"]);
   });
 
+  it("defaults contracts to create and edit operations", async () => {
+    await writeJson(dir, "support-ticket.json", validSupportContract);
+
+    const store = new ContractStore({ contractsDir: dir });
+    await store.reload();
+
+    expect(store.getContract("support-ticket").operations).toMatchObject({
+      create: { enabled: true, rules: [], examples: [] },
+      edit: { enabled: true, return: "full_object", rules: [], examples: [] }
+    });
+  });
+
+  it("loads top-level operation metadata", async () => {
+    await writeJson(dir, "support-ticket.json", {
+      ...validSupportContract,
+      operations: {
+        edit: {
+          enabled: true,
+          return: "full_object",
+          rules: ["Preserve unspecified fields exactly."],
+          examples: [
+            {
+              currentJson: {
+                summary: "Users cannot log in",
+                severity: "high",
+                category: "authentication"
+              },
+              input: "make it critical",
+              output: {
+                summary: "Users cannot log in",
+                severity: "critical",
+                category: "authentication"
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    const store = new ContractStore({ contractsDir: dir });
+    await store.reload();
+
+    expect(store.getContract("support-ticket").operations.edit).toMatchObject({
+      enabled: true,
+      return: "full_object",
+      rules: ["Preserve unspecified fields exactly."],
+      examples: [expect.objectContaining({ input: "make it critical" })]
+    });
+  });
+
   it("derives contract name from filename", async () => {
     await writeJson(dir, "support-ticket.json", {
       ...validSupportContract,

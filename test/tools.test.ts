@@ -64,6 +64,7 @@ describe("tool handlers", () => {
       "list_contracts",
       "read_contract",
       "get_json_contract",
+      "get_edit_contract",
       "validate_json",
       "get_repair_contract",
       "reload_contracts"
@@ -101,6 +102,7 @@ describe("tool handlers", () => {
     });
 
     expect(result.contract).toBe("support-ticket");
+    expect(result.operation).toBe("create");
     expect(result.instructions).toEqual([
       "Convert the input into JSON.",
       "Return JSON only.",
@@ -113,10 +115,57 @@ describe("tool handlers", () => {
       "Use examples as guidance."
     ]);
     expect(result.rules).toEqual(supportTicketContract.rules);
+    expect(result.operationRules).toEqual([]);
     expect(result.schema).toEqual(supportTicketContract.schema);
     expect(result.examples).toEqual(supportTicketContract.examples);
+    expect(result.operationExamples).toEqual([]);
     expect(result.input).toBe("Urgent, users cannot log in after SSO update.");
     expect(result.context).toEqual({ source: "chat" });
+  });
+
+  it("get_edit_contract returns edit instructions and current JSON", async () => {
+    const currentJson = {
+      summary: "Users cannot log in after SSO update",
+      severity: "high",
+      category: "authentication"
+    };
+
+    const result = await state.handlers.get_edit_contract({
+      contract: "support-ticket",
+      currentJson,
+      input: "make it critical",
+      context: { source: "chat" }
+    });
+
+    expect(result.contract).toBe("support-ticket");
+    expect(result.operation).toBe("edit");
+    expect(result.instructions).toEqual([
+      "Start from currentJson.",
+      "Apply only the user's requested change.",
+      "Preserve all unspecified fields exactly.",
+      "Return the complete updated JSON object, not a patch.",
+      "Return JSON only.",
+      "Do not return markdown.",
+      "Do not include commentary.",
+      "Do not include extra keys.",
+      "Match the schema exactly.",
+      "Use enum values exactly.",
+      "Follow all rules.",
+      "Use examples as guidance."
+    ]);
+    expect(result.currentJson).toEqual(currentJson);
+    expect(result.input).toBe("make it critical");
+    expect(result.context).toEqual({ source: "chat" });
+  });
+
+  it("get_edit_contract rejects invalid current JSON", async () => {
+    await expect(
+      state.handlers.get_edit_contract({
+        contract: "support-ticket",
+        currentJson: { severity: "urgent" },
+        input: "make it critical"
+      })
+    ).rejects.toThrow(/currentJson does not validate/);
   });
 
   it("validate_json returns valid=true for valid object", async () => {

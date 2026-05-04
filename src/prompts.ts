@@ -2,7 +2,7 @@ import { z } from "zod";
 import { isSafeContractName } from "./security.js";
 import type { FormattedValidationError, JsonObject } from "./types.js";
 import type { ContractStore } from "./contract-loader.js";
-import { renderJsonContractPrompt, renderRepairContractPrompt } from "./prompt-renderer.js";
+import { renderEditContractPrompt, renderJsonContractPrompt, renderRepairContractPrompt } from "./prompt-renderer.js";
 
 const ContractNameSchema = z
   .string()
@@ -28,6 +28,15 @@ const ValidationErrorInputSchema = z.object({
   keyword: z.string()
 });
 
+const EditContractPromptInputSchema = z
+  .object({
+    contract: ContractNameSchema,
+    currentJson: RequiredJsonValueSchema,
+    input: z.string(),
+    context: z.record(z.string(), z.unknown()).optional().default({})
+  })
+  .strict();
+
 const RepairContractPromptInputSchema = z
   .object({
     contract: ContractNameSchema,
@@ -50,6 +59,33 @@ export const promptDefinitions = [
       {
         name: "input",
         description: "Natural-language input to convert.",
+        required: true
+      },
+      {
+        name: "context",
+        description: "Optional JSON object encoded as a string.",
+        required: false
+      }
+    ]
+  },
+  {
+    name: "edit_contract_prompt",
+    description:
+      "Render a reusable prompt that tells the agent/model how to edit existing JSON from a selected contract.",
+    arguments: [
+      {
+        name: "contract",
+        description: "Contract name, for example create-filter.",
+        required: true
+      },
+      {
+        name: "currentJson",
+        description: "Current JSON value encoded as a string.",
+        required: true
+      },
+      {
+        name: "input",
+        description: "Natural-language edit instruction.",
         required: true
       },
       {
@@ -98,6 +134,7 @@ export function normalizePromptArguments(args: Record<string, unknown> | undefin
   return {
     ...input,
     context: parseMaybeJson(input.context, {}),
+    currentJson: parseMaybeJson(input.currentJson, undefined),
     invalidJson: parseMaybeJson(input.invalidJson, undefined),
     validationErrors: parseMaybeJson(input.validationErrors, [])
   };
@@ -110,6 +147,20 @@ export function createPromptHandlers(store: ContractStore) {
       const contract = store.getContract(parsed.contract);
       return renderJsonContractPrompt({
         contract,
+        input: parsed.input,
+        context: parsed.context as JsonObject
+      });
+    },
+
+    async edit_contract_prompt(input: unknown): Promise<string> {
+      const parsed = EditContractPromptInputSchema.parse(input ?? {});
+      const contract = store.getContract(parsed.contract);
+      if (contract.operations.edit.enabled === false) {
+        throw new Error(`Contract ${contract.name} does not enable the edit operation.`);
+      }
+      return renderEditContractPrompt({
+        contract,
+        currentJson: parsed.currentJson,
         input: parsed.input,
         context: parsed.context as JsonObject
       });

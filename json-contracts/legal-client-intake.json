@@ -50,7 +50,12 @@
       },
       "urgency": {
         "type": "string",
-        "enum": ["low", "medium", "high", "emergency"]
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "emergency"
+        ]
       },
       "requestedService": {
         "type": "string",
@@ -88,12 +93,67 @@
         "matterType": "employment",
         "jurisdiction": "California",
         "summary": "Review a severance agreement before the signing deadline.",
-        "deadlines": ["2026-05-15"],
-        "parties": ["Acme Robotics"],
+        "deadlines": [
+          "2026-05-15"
+        ],
+        "parties": [
+          "Acme Robotics"
+        ],
         "urgency": "high",
         "requestedService": "document_review",
-        "conflictsCheckNames": ["Acme Robotics"]
+        "conflictsCheckNames": [
+          "Acme Robotics"
+        ]
       }
     }
-  ]
+  ],
+  "operations": {
+    "edit": {
+      "enabled": true,
+      "return": "full_object",
+      "rules": [
+        "Start from currentJson.",
+        "Apply only the user's requested change.",
+        "Preserve all unspecified fields exactly.",
+        "Return the complete updated JSON object."
+      ],
+      "examples": [
+        {
+          "currentJson": {
+            "matterType": "employment",
+            "jurisdiction": "California",
+            "summary": "Review a severance agreement before the signing deadline.",
+            "deadlines": [
+              "2026-05-15"
+            ],
+            "parties": [
+              "Acme Robotics"
+            ],
+            "urgency": "high",
+            "requestedService": "document_review",
+            "conflictsCheckNames": [
+              "Acme Robotics"
+            ]
+          },
+          "input": "the deadline moved to 2026-05-10",
+          "output": {
+            "matterType": "employment",
+            "jurisdiction": "California",
+            "summary": "Review a severance agreement before the signing deadline.",
+            "deadlines": [
+              "2026-05-10"
+            ],
+            "parties": [
+              "Acme Robotics"
+            ],
+            "urgency": "high",
+            "requestedService": "document_review",
+            "conflictsCheckNames": [
+              "Acme Robotics"
+            ]
+          }
+        }
+      ]
+    }
+  }
 }

@@ -15,14 +15,29 @@
       },
       "severity": {
         "type": "string",
-        "enum": ["low", "medium", "high", "critical"]
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ]
       },
       "category": {
         "type": "string",
-        "enum": ["authentication", "billing", "bug", "feature_request", "other"]
+        "enum": [
+          "authentication",
+          "billing",
+          "bug",
+          "feature_request",
+          "other"
+        ]
       }
     },
-    "required": ["summary", "severity", "category"]
+    "required": [
+      "summary",
+      "severity",
+      "category"
+    ]
   },
   "examples": [
     {
@@ -33,5 +48,32 @@
         "category": "authentication"
       }
     }
-  ]
+  ],
+  "operations": {
+    "edit": {
+      "enabled": true,
+      "return": "full_object",
+      "rules": [
+        "Start from currentJson.",
+        "Apply only the user's requested change.",
+        "Preserve all unspecified fields exactly.",
+        "Return the complete updated JSON object."
+      ],
+      "examples": [
+        {
+          "currentJson": {
+            "summary": "Users cannot log in after SSO update",
+            "severity": "high",
+            "category": "authentication"
+          },
+          "input": "mark this as critical",
+          "output": {
+            "summary": "Users cannot log in after SSO update",
+            "severity": "critical",
+            "category": "authentication"
+          }
+        }
+      ]
+    }
+  }
 }

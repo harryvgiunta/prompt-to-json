@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { isSafeContractName } from "./security.js";
 import type {
+  EditContractResponse,
   FormattedValidationError,
   JsonContractResponse,
   JsonObject,
+  LoadedContract,
   RepairContractResponse,
   ValidationResult
 } from "./types.js";
@@ -47,6 +49,15 @@ const GetJsonContractInputSchema = z
   })
   .strict();
 
+const GetEditContractInputSchema = z
+  .object({
+    contract: ContractNameSchema,
+    currentJson: RequiredJsonValueSchema,
+    input: z.string(),
+    context: ContextSchema
+  })
+  .strict();
+
 const ValidateJsonInputSchema = z
   .object({
     contract: ContractNameSchema,
@@ -64,6 +75,21 @@ const GetRepairContractInputSchema = z
 
 export const JSON_CONTRACT_INSTRUCTIONS = [
   "Convert the input into JSON.",
+  "Return JSON only.",
+  "Do not return markdown.",
+  "Do not include commentary.",
+  "Do not include extra keys.",
+  "Match the schema exactly.",
+  "Use enum values exactly.",
+  "Follow all rules.",
+  "Use examples as guidance."
+];
+
+export const EDIT_CONTRACT_INSTRUCTIONS = [
+  "Start from currentJson.",
+  "Apply only the user's requested change.",
+  "Preserve all unspecified fields exactly.",
+  "Return the complete updated JSON object, not a patch.",
   "Return JSON only.",
   "Do not return markdown.",
   "Do not include commentary.",
@@ -138,6 +164,22 @@ export const toolDefinitions = [
     }
   },
   {
+    name: "get_edit_contract",
+    description:
+      "Return schema, rules, current JSON, edit instructions, and input so the agent/model can edit existing JSON.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        contract: { type: "string" },
+        currentJson: {},
+        input: { type: "string" },
+        context: { type: "object", additionalProperties: true, default: {} }
+      },
+      required: ["contract", "currentJson", "input"]
+    }
+  },
+  {
     name: "validate_json",
     description: "Validate agent-produced JSON against a contract schema.",
     inputSchema: {
@@ -183,6 +225,19 @@ function descriptionOrEmpty(description: string | undefined): string {
   return description ?? "";
 }
 
+function requireOperation(contract: LoadedContract, operation: "create" | "edit") {
+  const config = contract.operations[operation];
+  if (!config || config.enabled === false) {
+    throw new Error(`Contract ${contract.name} does not enable the ${operation} operation.`);
+  }
+  return config;
+}
+
+function formatValidationErrors(errors: FormattedValidationError[]): string {
+  if (!errors.length) return "unknown validation error";
+  return errors.map((error) => `${error.path || "/"}: ${error.message} (${error.keyword})`).join("; ");
+}
+
 export function createToolHandlers(store: ContractStore, validator: JsonValidator) {
   return {
     async list_contracts(input: unknown = {}) {
@@ -199,6 +254,7 @@ export function createToolHandlers(store: ContractStore, validator: JsonValidato
         contract: contract.name,
         description: descriptionOrEmpty(contract.description),
         rules: contract.rules,
+        operations: contract.operations,
         schema: contract.schema,
         examples: contract.examples
       };
@@ -207,15 +263,51 @@ export function createToolHandlers(store: ContractStore, validator: JsonValidato
     async get_json_contract(input: unknown): Promise<JsonContractResponse> {
       const parsed = parseInput(GetJsonContractInputSchema, input);
       const contract = store.getContract(parsed.contract);
+      const createOperation = requireOperation(contract, "create");
       const context = parsed.context as JsonObject;
 
       return {
         contract: contract.name,
+        operation: "create",
         instructions: JSON_CONTRACT_INSTRUCTIONS,
         description: descriptionOrEmpty(contract.description),
         rules: contract.rules,
+        operationRules: createOperation.rules,
         schema: contract.schema,
         examples: contract.examples,
+        operationExamples: createOperation.examples,
+        input: parsed.input,
+        context
+      };
+    },
+
+    async get_edit_contract(input: unknown): Promise<EditContractResponse> {
+      const parsed = parseInput(GetEditContractInputSchema, input);
+      const contract = store.getContract(parsed.contract);
+      const editOperation = requireOperation(contract, "edit");
+      if (editOperation.return !== "full_object") {
+        throw new Error(`Contract ${contract.name} edit operation must return full_object for get_edit_contract.`);
+      }
+
+      const currentValidation = validator.validateAgainstContract(contract, parsed.currentJson);
+      if (!currentValidation.valid) {
+        throw new Error(
+          `currentJson does not validate against contract ${contract.name}: ${formatValidationErrors(currentValidation.errors)}`
+        );
+      }
+
+      const context = parsed.context as JsonObject;
+      return {
+        contract: contract.name,
+        operation: "edit",
+        instructions: EDIT_CONTRACT_INSTRUCTIONS,
+        description: descriptionOrEmpty(contract.description),
+        rules: contract.rules,
+        operationRules: editOperation.rules,
+        schema: contract.schema,
+        examples: contract.examples,
+        operationExamples: editOperation.examples,
+        currentJson: parsed.currentJson,
         input: parsed.input,
         context
       };

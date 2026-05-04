@@ -503,9 +503,21 @@ async function handleApiRequest(request, response, url) {
     return true;
   }
 
+  if (method === "POST" && pathname === "/api/llm/save-config") {
+    const body = await readJsonBody(request);
+    sendJson(response, 200, await saveLlmConfigRequest(body));
+    return true;
+  }
+
   if (method === "POST" && pathname === "/api/json-contract") {
     const body = await readJsonBody(request);
     sendJson(response, 200, await handlers.get_json_contract(body));
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/edit-contract") {
+    const body = await readJsonBody(request);
+    sendJson(response, 200, await handlers.get_edit_contract(body));
     return true;
   }
 
@@ -527,6 +539,12 @@ async function handleApiRequest(request, response, url) {
     return true;
   }
 
+  if (method === "POST" && pathname === "/api/llm/edit") {
+    const body = await readJsonBody(request);
+    sendJson(response, 200, await editJsonWithLlm(body));
+    return true;
+  }
+
   if (method === "POST" && pathname === "/api/llm/repair") {
     const body = await readJsonBody(request);
     sendJson(response, 200, await repairJsonWithLlm(body));
@@ -539,6 +557,13 @@ async function handleApiRequest(request, response, url) {
   }
 
   return false;
+}
+
+async function saveLlmConfigRequest(input) {
+  const llm = resolveLlmRequest(input);
+  return saveLlmConfig(input, llm, {
+    saveAsDefault: optionalBoolean(input.saveAsDefault)
+  });
 }
 
 async function generateJsonWithLlm(input) {
@@ -578,6 +603,53 @@ async function generateJsonWithLlm(input) {
     llm,
     contract,
     jsonContract,
+    rawText: llmResponse.content,
+    reasoning: llmResponse.reasoning,
+    providerResponse: llmResponse.providerResponse,
+    usage: llmResponse.usage,
+    savedConfig
+  });
+}
+
+async function editJsonWithLlm(input) {
+  const contract = requiredString(input.contract, "contract");
+  const currentJson = requiredValue(input.currentJson, "currentJson");
+  const userInput = requiredString(input.input, "input");
+  const userContext = optionalContext(input.context);
+  const llm = resolveLlmRequest(input);
+
+  const editContract = await handlers.get_edit_contract({
+    contract,
+    currentJson,
+    input: userInput,
+    context: withStudioContext(userContext, {
+      mode: "llm-edit",
+      llmProvider: llm.provider.id,
+      note: "This edit payload was sent to the selected LLM provider by the example Studio."
+    })
+  });
+
+  const llmResponse = await callLlmForJson({
+    llm,
+    schema: editContract.schema,
+    messages: [
+      {
+        role: "system",
+        content: "You edit existing JSON so it matches the user's requested change while preserving unspecified fields. Return one complete JSON value only. Do not return markdown, code fences, commentary, or extra keys."
+      },
+      {
+        role: "user",
+        content: buildEditPrompt(editContract)
+      }
+    ]
+  });
+  const savedConfig = await trySaveLlmConfig(input, llm);
+
+  return buildLlmResult({
+    mode: "edit",
+    llm,
+    contract,
+    editContract,
     rawText: llmResponse.content,
     reasoning: llmResponse.reasoning,
     providerResponse: llmResponse.providerResponse,
@@ -807,7 +879,7 @@ function quoteEnvValue(value) {
     .replace(/\t/g, "\\t")}"`;
 }
 
-async function buildLlmResult({ mode, llm, contract, jsonContract, repairContract, rawText, reasoning, providerResponse, usage, savedConfig }) {
+async function buildLlmResult({ mode, llm, contract, jsonContract, editContract, repairContract, rawText, reasoning, providerResponse, usage, savedConfig }) {
   const parsed = parseModelJson(rawText);
   const baseResult = {
     provider: llm.provider.id,
@@ -822,6 +894,7 @@ async function buildLlmResult({ mode, llm, contract, jsonContract, repairContrac
     ...(providerResponse ? { providerResponse } : {}),
     ...(savedConfig ? { savedConfig } : {}),
     ...(jsonContract ? { jsonContract } : {}),
+    ...(editContract ? { editContract } : {}),
     ...(repairContract ? { repairContract } : {}),
     rawText
   };
@@ -852,6 +925,16 @@ function buildGenerationPrompt(jsonContract) {
     "Return JSON only. Do not include markdown or explanation.",
     "The selected contract payload is below:",
     JSON.stringify(jsonContract, null, 2)
+  ].join("\n\n");
+}
+
+function buildEditPrompt(editContract) {
+  return [
+    "Use this prompt-to-json edit contract to edit the current JSON.",
+    "Apply only the requested change and preserve unspecified fields exactly.",
+    "Return the complete updated JSON object only. Do not include markdown or explanation.",
+    "The selected edit payload is below:",
+    JSON.stringify(editContract, null, 2)
   ].join("\n\n");
 }
 

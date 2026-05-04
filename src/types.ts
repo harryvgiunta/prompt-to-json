@@ -1,9 +1,23 @@
 export type JsonObject = Record<string, unknown>;
 
+export type ContractOperation = JsonObject & {
+  enabled: boolean;
+  rules: string[];
+  examples: unknown[];
+  return?: "full_object" | "json_patch";
+};
+
+export type ContractOperations = {
+  create: ContractOperation;
+  edit: ContractOperation;
+  [operation: string]: ContractOperation;
+};
+
 export type JsonContractFile = {
   name?: string;
   description?: string;
   rules?: string[];
+  operations?: Partial<Record<string, Partial<ContractOperation>>>;
   schema: JsonObject;
   examples?: Array<{
     input: unknown;
@@ -16,6 +30,7 @@ export type LoadedContract = {
   name: string;
   description?: string;
   rules: string[];
+  operations: ContractOperations;
   schema: JsonObject;
   examples: unknown[];
   sourcePath: string;
@@ -25,6 +40,7 @@ export type PublicContract = {
   name: string;
   description?: string;
   rules: string[];
+  operations: ContractOperations;
   schema: JsonObject;
   examples: unknown[];
 };
@@ -80,11 +96,29 @@ export type ResourceDescription = {
 
 export type JsonContractResponse = {
   contract: string;
+  operation: "create";
   instructions: string[];
   description: string;
   rules: string[];
+  operationRules: string[];
   schema: JsonObject;
   examples: unknown[];
+  operationExamples: unknown[];
+  input: string;
+  context: JsonObject;
+};
+
+export type EditContractResponse = {
+  contract: string;
+  operation: "edit";
+  instructions: string[];
+  description: string;
+  rules: string[];
+  operationRules: string[];
+  schema: JsonObject;
+  examples: unknown[];
+  operationExamples: unknown[];
+  currentJson: unknown;
   input: string;
   context: JsonObject;
 };

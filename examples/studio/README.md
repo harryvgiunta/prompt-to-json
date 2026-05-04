@@ -27,10 +27,11 @@ http://127.0.0.1:5177
 Then:
 
 1. Pick a contract.
-2. Use the default **LLM API key mode**, or switch to **Manual mode**.
-3. Generate or paste JSON.
-4. Validate.
-5. Repair if needed.
+2. Choose **Create new JSON** or **Edit existing JSON**.
+3. Use the default **LLM API key mode**, or switch to **Manual mode**.
+4. Generate or paste JSON.
+5. Validate.
+6. Repair if needed.
 
 Use a different port if needed:
 
@@ -58,7 +59,7 @@ Use it for app/system variables such as:
 }
 ```
 
-The Studio sends this as the `context` object in `get_json_contract`. `prompt-to-json` passes context through unchanged; it does not hard-code date logic or business logic.
+The Studio sends this as the `context` object in `get_json_contract` or `get_edit_contract`. `prompt-to-json` passes context through unchanged; it does not hard-code date logic or business logic.
 
 Important behavior:
 
@@ -77,7 +78,8 @@ The fastest live test is:
 4. Type the model name you want to test.
 5. Choose a thinking level.
 6. Optionally tick **Save config** and **Save as default provider/model**.
-7. Click **Generate JSON**.
+7. Choose **Create new JSON** or **Edit existing JSON**. For edit, paste the existing JSON and describe the requested change.
+8. Click **Generate JSON** or **Generate edited JSON**.
 
 Keys pasted into the browser are sent only to the local Studio server for that request. They are saved only when you tick **Save config**, which writes to your local project `.env`. The server binds to `127.0.0.1` by default.
 
@@ -145,10 +147,35 @@ Thinking is provider/model-dependent:
 
 By default, the Studio does not write provider settings or API keys anywhere. In **LLM API key mode**, you can opt in:
 
-- Tick **Save config** to write the selected provider's model, thinking level, pasted API key, and base URL override to the local `.env` after a generate or repair request succeeds.
+- Tick **Save config** to write the selected provider's model, thinking level, pasted API key, and base URL override to the local `.env` immediately. While checked, provider config field changes are saved again automatically.
 - Tick **Save as default provider/model** to also set `LLM_PROVIDER` so the saved provider/model is selected on the next load.
 
 API keys are written to provider-specific variables such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENROUTER_API_KEY`. The custom OpenAI-compatible provider uses `LLM_API_KEY`. This keeps saved keys tied to the provider you selected instead of storing them in browser storage.
+
+## Create and edit operations
+
+Contracts can define top-level `operations` metadata. If omitted, the server treats both `create` and `edit` as enabled by default. Edit mode sends `currentJson` separately from `context`, asks the model to preserve unspecified fields, and expects the complete updated JSON object back.
+
+Example edit request:
+
+```json
+{
+  "currentJson": {
+    "status": "open",
+    "limit": 50
+  },
+  "input": "we want the last 20 closed tickets"
+}
+```
+
+Expected edited JSON:
+
+```json
+{
+  "status": "closed",
+  "limit": 20
+}
+```
 
 ## Optional `.env` setup
 
@@ -257,6 +284,7 @@ The example server wraps the same tool handlers that the MCP stdio server expose
 - `GET /api/contracts` → `list_contracts`
 - `GET /api/contracts/:name` → `read_contract`
 - `POST /api/json-contract` → `get_json_contract`
+- `POST /api/edit-contract` → `get_edit_contract`
 - `POST /api/validate` → `validate_json`
 - `POST /api/repair-contract` → `get_repair_contract`
 - `POST /api/reload` → `reload_contracts`
@@ -265,7 +293,9 @@ The Studio also exposes demo-only LLM routes:
 
 - `GET /api/llm/providers` → provider presets and thinking levels, without secrets
 - `GET /api/llm/config` → backward-compatible alias for `/api/llm/providers`
+- `POST /api/llm/save-config` → write selected provider settings to the local `.env` when the user opts in
 - `POST /api/llm/generate` → get a JSON contract, including optional `context`, call the selected provider, parse output, then validate
+- `POST /api/llm/edit` → get an edit contract, including `currentJson` and optional `context`, call the selected provider, parse output, then validate
 - `POST /api/llm/repair` → get a repair contract, call the selected provider, parse output, then validate
 
 These HTTP endpoints are only for the demo Studio. The production MCP server remains the stdio server started by `prompt-to-json`.

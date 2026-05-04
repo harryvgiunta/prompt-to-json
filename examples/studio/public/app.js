@@ -1,5 +1,6 @@
 const elements = {
   modeTabs: [...document.querySelectorAll(".tab-button")],
+  operationButtons: [...document.querySelectorAll(".operation-button")],
   manualModePanel: document.querySelector("#manualModePanel"),
   llmModePanel: document.querySelector("#llmModePanel"),
   contractSelect: document.querySelector("#contractSelect"),
@@ -8,7 +9,10 @@ const elements = {
   rulesList: document.querySelector("#rulesList"),
   schemaPreview: document.querySelector("#schemaPreview"),
   examplesPreview: document.querySelector("#examplesPreview"),
+  sourceInputLabel: document.querySelector("#sourceInputLabel"),
   sourceInput: document.querySelector("#sourceInput"),
+  currentJsonInput: document.querySelector("#currentJsonInput"),
+  manualEditFields: document.querySelector("#manualEditFields"),
   contextInput: document.querySelector("#contextInput"),
   jsonOutput: document.querySelector("#jsonOutput"),
   useExampleInput: document.querySelector("#useExampleInput"),
@@ -35,7 +39,10 @@ const elements = {
   llmSaveAsDefault: document.querySelector("#llmSaveAsDefault"),
   clearApiKey: document.querySelector("#clearApiKey"),
   llmConfigStatus: document.querySelector("#llmConfigStatus"),
+  llmSourceInputLabel: document.querySelector("#llmSourceInputLabel"),
   llmSourceInput: document.querySelector("#llmSourceInput"),
+  llmCurrentJsonInput: document.querySelector("#llmCurrentJsonInput"),
+  llmEditFields: document.querySelector("#llmEditFields"),
   llmContextInput: document.querySelector("#llmContextInput"),
   llmUseExampleInput: document.querySelector("#llmUseExampleInput"),
   llmGenerate: document.querySelector("#llmGenerate"),
@@ -51,6 +58,7 @@ const elements = {
 
 const state = {
   mode: "llm",
+  operation: "create",
   contracts: [],
   currentContract: null,
   llmConfig: null,
@@ -71,6 +79,10 @@ function wireEvents() {
     tab.addEventListener("click", () => switchMode(tab.dataset.mode));
   }
 
+  for (const button of elements.operationButtons) {
+    button.addEventListener("click", () => switchOperation(button.dataset.operation));
+  }
+
   elements.reloadContracts.addEventListener("click", async () => {
     await reloadContracts();
   });
@@ -80,11 +92,16 @@ function wireEvents() {
   });
 
   elements.useExampleInput.addEventListener("click", () => {
-    const example = firstExample();
+    const example = state.operation === "edit" ? firstEditExample() : firstExample();
     if (!example) return toast("No example input for this contract.");
     const text = formatInputValue(example.input);
     elements.sourceInput.value = text;
     if (!elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
+    if (state.operation === "edit" && example.currentJson !== undefined) {
+      const json = pretty(example.currentJson);
+      elements.currentJsonInput.value = json;
+      if (!elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
+    }
     updateButtonState();
   });
 
@@ -94,6 +111,8 @@ function wireEvents() {
     const json = pretty(example.output);
     elements.jsonOutput.value = json;
     elements.llmJsonOutput.value = json;
+    elements.currentJsonInput.value = json;
+    elements.llmCurrentJsonInput.value = json;
     clearValidationState();
     clearRepairState();
     clearLlmValidationState();
@@ -103,6 +122,8 @@ function wireEvents() {
     const json = pretty(makeInvalidExample());
     elements.jsonOutput.value = json;
     elements.llmJsonOutput.value = json;
+    elements.currentJsonInput.value = json;
+    elements.llmCurrentJsonInput.value = json;
     clearValidationState();
     clearRepairState();
     clearLlmValidationState();
@@ -133,9 +154,18 @@ function wireEvents() {
     applySelectedProviderDefaults();
     renderLlmConfigStatus();
     updateButtonState();
+    scheduleSaveCurrentLlmConfig();
   });
 
-  for (const input of [elements.llmModel, elements.llmThinking, elements.llmApiKey, elements.llmBaseUrl, elements.llmSourceInput, elements.llmJsonOutput]) {
+  for (const input of [elements.llmModel, elements.llmThinking, elements.llmApiKey, elements.llmBaseUrl]) {
+    input.addEventListener("input", () => {
+      renderLlmConfigStatus();
+      updateButtonState();
+      scheduleSaveCurrentLlmConfig();
+    });
+  }
+
+  for (const input of [elements.sourceInput, elements.currentJsonInput, elements.llmSourceInput, elements.llmCurrentJsonInput, elements.llmJsonOutput]) {
     input.addEventListener("input", () => {
       renderLlmConfigStatus();
       updateButtonState();
@@ -146,12 +176,14 @@ function wireEvents() {
     if (!elements.llmSaveConfig.checked) elements.llmSaveAsDefault.checked = false;
     renderLlmConfigStatus();
     updateButtonState();
+    if (elements.llmSaveConfig.checked) void saveCurrentLlmConfig();
   });
 
   elements.llmSaveAsDefault.addEventListener("change", () => {
     if (elements.llmSaveAsDefault.checked) elements.llmSaveConfig.checked = true;
     renderLlmConfigStatus();
     updateButtonState();
+    if (elements.llmSaveConfig.checked) void saveCurrentLlmConfig();
   });
 
   elements.clearApiKey.addEventListener("click", () => {
@@ -162,11 +194,16 @@ function wireEvents() {
   });
 
   elements.llmUseExampleInput.addEventListener("click", () => {
-    const example = firstExample();
+    const example = state.operation === "edit" ? firstEditExample() : firstExample();
     if (!example) return toast("No example input for this contract.");
     const text = formatInputValue(example.input);
     elements.llmSourceInput.value = text;
     if (!elements.sourceInput.value.trim()) elements.sourceInput.value = text;
+    if (state.operation === "edit" && example.currentJson !== undefined) {
+      const json = pretty(example.currentJson);
+      elements.llmCurrentJsonInput.value = json;
+      if (!elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
+    }
     updateButtonState();
   });
 
@@ -203,6 +240,10 @@ function switchMode(mode) {
     elements.llmSourceInput.value = elements.sourceInput.value.trim();
   }
 
+  if (mode === "llm" && !elements.llmCurrentJsonInput.value.trim() && elements.currentJsonInput.value.trim()) {
+    elements.llmCurrentJsonInput.value = elements.currentJsonInput.value.trim();
+  }
+
   if (mode === "llm" && !elements.llmContextInput.value.trim() && elements.contextInput.value.trim()) {
     elements.llmContextInput.value = elements.contextInput.value.trim();
   }
@@ -211,11 +252,62 @@ function switchMode(mode) {
     elements.sourceInput.value = elements.llmSourceInput.value.trim();
   }
 
+  if (mode === "manual" && !elements.currentJsonInput.value.trim() && elements.llmCurrentJsonInput.value.trim()) {
+    elements.currentJsonInput.value = elements.llmCurrentJsonInput.value.trim();
+  }
+
   if (mode === "manual" && !elements.contextInput.value.trim() && elements.llmContextInput.value.trim()) {
     elements.contextInput.value = elements.llmContextInput.value.trim();
   }
 
   updateButtonState();
+}
+
+function switchOperation(operation) {
+  if (!operation || operation === state.operation) return;
+  state.operation = operation;
+
+  if (operation === "edit") {
+    const editExample = firstEditExample();
+    if (editExample?.currentJson !== undefined) {
+      const json = pretty(editExample.currentJson);
+      if (!elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
+      if (!elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
+    }
+    if (editExample?.input !== undefined) {
+      const text = formatInputValue(editExample.input);
+      if (!elements.sourceInput.value.trim()) elements.sourceInput.value = text;
+      if (!elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
+    }
+  }
+
+  clearContractPayloadState();
+  clearLlmValidationState();
+  updateOperationUi();
+  updateButtonState();
+}
+
+function updateOperationUi() {
+  if (state.operation === "edit" && !editOperationEnabled()) {
+    state.operation = "create";
+  }
+  const isEdit = state.operation === "edit";
+
+  for (const button of elements.operationButtons) {
+    button.classList.toggle("active", button.dataset.operation === state.operation);
+    button.disabled = button.dataset.operation === "edit" && !editOperationEnabled();
+  }
+
+  elements.manualEditFields.classList.toggle("hidden", !isEdit);
+  elements.llmEditFields.classList.toggle("hidden", !isEdit);
+  elements.sourceInputLabel.textContent = isEdit ? "Requested change" : "Input to convert";
+  elements.llmSourceInputLabel.textContent = isEdit ? "Requested change" : "Input to convert";
+  elements.sourceInput.placeholder = isEdit ? "Example: we want the last 20 closed tickets" : "Example: Urgent, users cannot log in after SSO update.";
+  elements.llmSourceInput.placeholder = elements.sourceInput.placeholder;
+  elements.currentJsonInput.placeholder = '{"status":"open","limit":50}';
+  elements.llmCurrentJsonInput.placeholder = elements.currentJsonInput.placeholder;
+  elements.buildContract.textContent = isEdit ? "Get edit contract" : "Get JSON contract";
+  elements.llmGenerate.textContent = isEdit ? "Generate edited JSON" : "Generate JSON";
 }
 
 async function loadLlmProviders() {
@@ -411,7 +503,10 @@ function renderContractDetails(contract, options = {}) {
   }
 
   elements.schemaPreview.textContent = pretty(contract.schema ?? {});
-  elements.examplesPreview.textContent = pretty(contract.examples ?? []);
+  elements.examplesPreview.textContent = pretty({
+    create: contract.examples ?? [],
+    edit: contract.operations?.edit?.examples ?? []
+  });
 
   const example = firstExample();
   if (example?.input !== undefined) {
@@ -424,8 +519,23 @@ function renderContractDetails(contract, options = {}) {
     const json = pretty(example.output);
     if (forceExampleValues || !elements.jsonOutput.value.trim()) elements.jsonOutput.value = json;
     if (forceExampleValues || !elements.llmJsonOutput.value.trim()) elements.llmJsonOutput.value = json;
+    if (forceExampleValues || !elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
+    if (forceExampleValues || !elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
   }
 
+  const editExample = firstEditExample();
+  if (editExample?.currentJson !== undefined) {
+    const json = pretty(editExample.currentJson);
+    if (forceExampleValues || !elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
+    if (forceExampleValues || !elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
+  }
+  if (editExample?.input !== undefined && state.operation === "edit") {
+    const text = formatInputValue(editExample.input);
+    if (forceExampleValues || !elements.sourceInput.value.trim()) elements.sourceInput.value = text;
+    if (forceExampleValues || !elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
+  }
+
+  updateOperationUi();
   updateButtonState();
 }
 
@@ -434,30 +544,42 @@ async function buildJsonContract() {
   const input = elements.sourceInput.value.trim();
 
   if (!contract) return setStatus(elements.jsonContractStatus, "bad", "Select a contract first.");
-  if (!input) return setStatus(elements.jsonContractStatus, "bad", "Paste a natural-language input first.");
+  if (!input) return setStatus(elements.jsonContractStatus, "bad", state.operation === "edit" ? "Describe the requested change first." : "Paste a natural-language input first.");
 
   const context = parseContextFromTextarea(elements.contextInput.value);
   if (!context.ok) return setStatus(elements.jsonContractStatus, "bad", context.error);
 
-  setStatus(elements.jsonContractStatus, "info", "Calling get_json_contract…");
+  const body = {
+    contract,
+    input,
+    context: withStudioContext(context.value, {
+      mode: state.operation === "edit" ? "manual-edit" : "manual",
+      note: state.operation === "edit"
+        ? "Give this edit payload to your chosen model. Paste the complete edited JSON result back into the Studio for validation."
+        : "Give this payload to your chosen model. Paste the JSON result back into the Studio for validation."
+    })
+  };
+  let endpoint = "/api/json-contract";
+
+  if (state.operation === "edit") {
+    const currentJson = parseJsonFromTextarea(elements.currentJsonInput.value);
+    if (!currentJson.ok) return setStatus(elements.jsonContractStatus, "bad", `Existing JSON: ${currentJson.error}`);
+    body.currentJson = currentJson.value;
+    endpoint = "/api/edit-contract";
+  }
+
+  setStatus(elements.jsonContractStatus, "info", state.operation === "edit" ? "Calling get_edit_contract…" : "Calling get_json_contract…");
 
   try {
-    const payload = await api("/api/json-contract", {
+    const payload = await api(endpoint, {
       method: "POST",
-      body: {
-        contract,
-        input,
-        context: withStudioContext(context.value, {
-          mode: "manual",
-          note: "Give this payload to your chosen model. Paste the JSON result back into the Studio for validation."
-        })
-      }
+      body
     });
 
     state.lastJsonContract = payload;
     elements.jsonContractPayload.classList.remove("placeholder");
     elements.jsonContractPayload.textContent = pretty(payload);
-    setStatus(elements.jsonContractStatus, "good", "Contract payload ready. Copy it into any model or agent.");
+    setStatus(elements.jsonContractStatus, "good", state.operation === "edit" ? "Edit payload ready. Copy it into any model or agent." : "Contract payload ready. Copy it into any model or agent.");
     updateButtonState();
   } catch (error) {
     setStatus(elements.jsonContractStatus, "bad", messageFor(error));
@@ -532,26 +654,38 @@ async function generateWithLlm() {
   const input = elements.llmSourceInput.value.trim();
 
   if (!contract) return setStatus(elements.llmOutputStatus, "bad", "Select a contract first.");
-  if (!input) return setStatus(elements.llmOutputStatus, "bad", "Paste a natural-language input first.");
+  if (!input) return setStatus(elements.llmOutputStatus, "bad", state.operation === "edit" ? "Describe the requested change first." : "Paste a natural-language input first.");
 
   const context = parseContextFromTextarea(elements.llmContextInput.value);
   if (!context.ok) return setStatus(elements.llmOutputStatus, "bad", context.error);
+
+  const body = {
+    ...selectedLlmRequestConfig(),
+    contract,
+    input,
+    context: context.value
+  };
+  let endpoint = "/api/llm/generate";
+  let successPrefix = "Generated JSON.";
+
+  if (state.operation === "edit") {
+    const currentJson = parseJsonFromTextarea(elements.llmCurrentJsonInput.value);
+    if (!currentJson.ok) return setStatus(elements.llmOutputStatus, "bad", `Existing JSON: ${currentJson.error}`);
+    body.currentJson = currentJson.value;
+    endpoint = "/api/llm/edit";
+    successPrefix = "Edited JSON.";
+  }
 
   clearLlmValidationState(false);
   setStatus(elements.llmOutputStatus, "info", `Calling ${selectedProvider()?.label ?? "provider"}…`);
 
   try {
-    const result = await api("/api/llm/generate", {
+    const result = await api(endpoint, {
       method: "POST",
-      body: {
-        ...selectedLlmRequestConfig(),
-        contract,
-        input,
-        context: context.value
-      }
+      body
     });
 
-    renderLlmResult(result, "Generated JSON.");
+    renderLlmResult(result, successPrefix);
   } catch (error) {
     setStatus(elements.llmOutputStatus, "bad", messageFor(error));
   }
@@ -617,6 +751,9 @@ async function repairWithLlm() {
 function renderLlmResult(result, successPrefix) {
   state.lastLlmResult = result;
 
+  const editDiff = result.mode === "edit" && result.json !== undefined && result.editContract?.currentJson !== undefined
+    ? diffJson(result.editContract.currentJson, result.json)
+    : [];
   const display = {
     provider: result.provider,
     providerLabel: result.providerLabel,
@@ -629,6 +766,7 @@ function renderLlmResult(result, successPrefix) {
     ...(result.usage ? { usage: result.usage } : {}),
     rawText: result.rawText,
     ...(result.json !== undefined ? { json: result.json } : {}),
+    ...(editDiff.length ? { editDiff } : {}),
     ...(result.parseError ? { parseError: result.parseError } : {}),
     validation: result.validation,
     ...(result.savedConfig ? { savedConfig: summarizeSavedConfig(result.savedConfig) } : {}),
@@ -696,6 +834,34 @@ function applySavedLlmConfig(savedConfig) {
   }
 }
 
+let saveConfigTimer;
+function scheduleSaveCurrentLlmConfig() {
+  if (!elements.llmSaveConfig.checked) return;
+  clearTimeout(saveConfigTimer);
+  saveConfigTimer = setTimeout(() => {
+    void saveCurrentLlmConfig({ quiet: true });
+  }, 500);
+}
+
+async function saveCurrentLlmConfig(options = {}) {
+  if (!elements.llmSaveConfig.checked) return;
+  const { quiet = false } = options;
+
+  if (!quiet) {
+    setStatus(elements.llmConfigStatus, "info", "Saving LLM config to local .env…");
+  }
+
+  try {
+    const savedConfig = await api("/api/llm/save-config", {
+      method: "POST",
+      body: selectedLlmRequestConfig()
+    });
+    applySavedLlmConfig(savedConfig);
+  } catch (error) {
+    setStatus(elements.llmConfigStatus, "bad", `Could not save config: ${messageFor(error)}`);
+  }
+}
+
 async function validateContractJson(contract, json) {
   return api("/api/validate", {
     method: "POST",
@@ -716,7 +882,9 @@ function renderValidationErrors(element, errors) {
 function clearContractPayloadState() {
   state.lastJsonContract = null;
   elements.jsonContractPayload.classList.add("placeholder");
-  elements.jsonContractPayload.textContent = "The MCP-style get_json_contract payload will appear here.";
+  elements.jsonContractPayload.textContent = state.operation === "edit"
+    ? "The MCP-style get_edit_contract payload will appear here."
+    : "The MCP-style get_json_contract payload will appear here.";
   hideStatus(elements.jsonContractStatus);
   updateButtonState();
 }
@@ -757,7 +925,7 @@ function clearLlmValidationState(resetPayload = true) {
 
   if (resetPayload) {
     elements.llmPayload.classList.add("placeholder");
-    elements.llmPayload.textContent = "Provider result and validation details will appear here.";
+    elements.llmPayload.textContent = "Provider result, validation details, and edit diff when applicable will appear here.";
   }
 
   updateButtonState();
@@ -765,6 +933,10 @@ function clearLlmValidationState(resetPayload = true) {
 
 function updateButtonState() {
   const hasContract = Boolean(state.currentContract);
+  const isEdit = state.operation === "edit";
+  const canUseOperation = !isEdit || editOperationEnabled();
+  const hasManualCurrentJson = !isEdit || Boolean(elements.currentJsonInput.value.trim());
+  const hasLlmCurrentJson = !isEdit || Boolean(elements.llmCurrentJsonInput.value.trim());
   const hasFailedValidation = state.lastValidation?.valid === false;
   const hasFailedLlmValidation = state.lastLlmValidation?.valid === false;
   const provider = selectedProvider();
@@ -774,7 +946,7 @@ function updateButtonState() {
   const hasLlmInput = Boolean(elements.llmSourceInput.value.trim());
   const hasLlmJson = Boolean(elements.llmJsonOutput.value.trim());
 
-  elements.buildContract.disabled = !hasContract;
+  elements.buildContract.disabled = !hasContract || !canUseOperation || !hasManualCurrentJson;
   elements.validateJson.disabled = !hasContract;
   elements.useExampleInput.disabled = !hasContract;
   elements.useExampleOutput.disabled = !hasContract;
@@ -783,7 +955,7 @@ function updateButtonState() {
   elements.buildRepair.disabled = !hasFailedValidation;
   elements.copyRepair.disabled = !state.lastRepairContract;
   elements.llmUseExampleInput.disabled = !hasContract;
-  elements.llmGenerate.disabled = !hasContract || !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasLlmInput;
+  elements.llmGenerate.disabled = !hasContract || !canUseOperation || !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasLlmInput || !hasLlmCurrentJson;
   elements.llmValidate.disabled = !hasContract || !hasLlmJson;
   elements.llmRepair.disabled = !hasContract || !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasFailedLlmValidation;
   elements.llmCopyJson.disabled = !hasLlmJson;
@@ -813,6 +985,15 @@ function selectedLlmRequestConfig() {
 function firstExample() {
   const examples = state.currentContract?.examples;
   return Array.isArray(examples) && examples.length > 0 ? examples[0] : null;
+}
+
+function firstEditExample() {
+  const examples = state.currentContract?.operations?.edit?.examples;
+  return Array.isArray(examples) && examples.length > 0 ? examples[0] : null;
+}
+
+function editOperationEnabled() {
+  return state.currentContract?.operations?.edit?.enabled !== false;
 }
 
 function makeInvalidExample() {
@@ -903,6 +1084,46 @@ function pretty(value) {
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function diffJson(before, after, path = "") {
+  if (Object.is(before, after)) return [];
+
+  const beforeIsObject = isPlainObject(before);
+  const afterIsObject = isPlainObject(after);
+  if (beforeIsObject && afterIsObject) {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    return [...keys].flatMap((key) => {
+      const childPath = `${path}/${escapeJsonPointerSegment(key)}`;
+      if (!Object.prototype.hasOwnProperty.call(before, key)) {
+        return [{ op: "add", path: childPath, value: after[key] }];
+      }
+      if (!Object.prototype.hasOwnProperty.call(after, key)) {
+        return [{ op: "remove", path: childPath, from: before[key] }];
+      }
+      return diffJson(before[key], after[key], childPath);
+    });
+  }
+
+  if (Array.isArray(before) && Array.isArray(after)) {
+    const max = Math.max(before.length, after.length);
+    return Array.from({ length: max }, (_value, index) => {
+      const childPath = `${path}/${index}`;
+      if (index >= before.length) return [{ op: "add", path: childPath, value: after[index] }];
+      if (index >= after.length) return [{ op: "remove", path: childPath, from: before[index] }];
+      return diffJson(before[index], after[index], childPath);
+    }).flat();
+  }
+
+  return [{ op: "replace", path: path || "/", from: before, value: after }];
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function escapeJsonPointerSegment(value) {
+  return String(value).replace(/~/g, "~0").replace(/\//g, "~1");
 }
 
 function formatInputValue(value) {

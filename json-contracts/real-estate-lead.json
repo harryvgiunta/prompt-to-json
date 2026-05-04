@@ -13,7 +13,13 @@
     "properties": {
       "transactionType": {
         "type": "string",
-        "enum": ["buy", "rent", "sell", "lease", "unknown"]
+        "enum": [
+          "buy",
+          "rent",
+          "sell",
+          "lease",
+          "unknown"
+        ]
       },
       "propertyType": {
         "type": "string",
@@ -49,7 +55,14 @@
       },
       "timeline": {
         "type": "string",
-        "enum": ["asap", "0_3_months", "3_6_months", "6_12_months", "browsing", "unknown"]
+        "enum": [
+          "asap",
+          "0_3_months",
+          "3_6_months",
+          "6_12_months",
+          "browsing",
+          "unknown"
+        ]
       },
       "mustHaves": {
         "type": "array",
@@ -60,11 +73,21 @@
       },
       "financingStatus": {
         "type": "string",
-        "enum": ["pre_approved", "cash", "needs_financing", "unknown"]
+        "enum": [
+          "pre_approved",
+          "cash",
+          "needs_financing",
+          "unknown"
+        ]
       },
       "contactPreference": {
         "type": "string",
-        "enum": ["call", "text", "email", "unknown"]
+        "enum": [
+          "call",
+          "text",
+          "email",
+          "unknown"
+        ]
       }
     },
     "required": [
@@ -86,10 +109,58 @@
         "budgetMax": 650000,
         "bedrooms": 3,
         "timeline": "0_3_months",
-        "mustHaves": ["parking", "home office"],
+        "mustHaves": [
+          "parking",
+          "home office"
+        ],
         "financingStatus": "pre_approved",
         "contactPreference": "text"
       }
     }
-  ]
+  ],
+  "operations": {
+    "edit": {
+      "enabled": true,
+      "return": "full_object",
+      "rules": [
+        "Start from currentJson.",
+        "Apply only the user's requested change.",
+        "Preserve all unspecified fields exactly.",
+        "Return the complete updated JSON object."
+      ],
+      "examples": [
+        {
+          "currentJson": {
+            "transactionType": "buy",
+            "propertyType": "condo",
+            "locationQuery": "Austin",
+            "budgetMax": 650000,
+            "bedrooms": 3,
+            "timeline": "0_3_months",
+            "mustHaves": [
+              "parking",
+              "home office"
+            ],
+            "financingStatus": "pre_approved",
+            "contactPreference": "text"
+          },
+          "input": "change this to a 4 bedroom house in Raleigh up to 800k",
+          "output": {
+            "transactionType": "buy",
+            "propertyType": "single_family",
+            "locationQuery": "Raleigh",
+            "budgetMax": 800000,
+            "bedrooms": 4,
+            "timeline": "0_3_months",
+            "mustHaves": [
+              "parking",
+              "home office"
+            ],
+            "financingStatus": "pre_approved",
+            "contactPreference": "text"
+          }
+        }
+      ]
+    }
+  }
 }

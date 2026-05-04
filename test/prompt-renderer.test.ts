@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { LoadedContract } from "../src/types.js";
-import { renderJsonContractPrompt, renderRepairContractPrompt } from "../src/prompt-renderer.js";
+import { renderEditContractPrompt, renderJsonContractPrompt, renderRepairContractPrompt } from "../src/prompt-renderer.js";
 
 const contract: LoadedContract = {
   name: "support-ticket",
   description: "Convert natural language into a support ticket object.",
   rules: ["If the user says urgent, severity must be critical."],
+  operations: {
+    create: { enabled: true, rules: [], examples: [] },
+    edit: {
+      enabled: true,
+      return: "full_object",
+      rules: ["Preserve unspecified fields exactly."],
+      examples: []
+    }
+  },
   schema: {
     type: "object",
     additionalProperties: false,
@@ -59,6 +68,22 @@ describe("prompt renderer", () => {
     expect(prompt).toContain('"additionalProperties": false');
     expect(prompt).toContain("Urgent login issue");
     expect(prompt).toContain('"source": "chat"');
+  });
+
+  it("edit contract prompt contains required phrases and current JSON", () => {
+    const prompt = renderEditContractPrompt({
+      contract,
+      currentJson: { summary: "Login issue", severity: "high" },
+      input: "make it critical",
+      context: { source: "chat" }
+    });
+
+    expect(prompt).toContain("Edit the current JSON using the user's requested change.");
+    expect(prompt).toContain("Start from currentJson.");
+    expect(prompt).toContain("Preserve all unspecified fields exactly.");
+    expect(prompt).toContain("Operation: edit");
+    expect(prompt).toContain('"severity": "high"');
+    expect(prompt).toContain("make it critical");
   });
 
   it("repair contract prompt contains required phrases", () => {

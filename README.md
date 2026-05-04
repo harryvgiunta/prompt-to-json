@@ -120,6 +120,21 @@ There is no manifest file and no manually maintained resources file. Git handles
     "Summary must be under 80 characters.",
     "Category must be authentication, billing, bug, feature_request, or other."
   ],
+  "operations": {
+    "create": {
+      "enabled": true
+    },
+    "edit": {
+      "enabled": true,
+      "return": "full_object",
+      "rules": [
+        "Start from currentJson.",
+        "Apply only the user's requested change.",
+        "Preserve all unspecified fields exactly.",
+        "Return the complete updated JSON object."
+      ]
+    }
+  },
   "schema": {
     "type": "object",
     "additionalProperties": false,
@@ -158,6 +173,7 @@ Rules:
 - `description` is optional but recommended.
 - `rules` is optional and defaults to `[]`.
 - `examples` is optional and defaults to `[]`.
+- `operations` is optional and defaults to enabled `create` and `edit` operations. Operation metadata belongs at the top level, not inside the JSON Schema.
 - `name` is optional, but the filename is the source of truth.
 - A `version` field is rejected; use Git for versioning.
 - Contract files are plain JSON.
@@ -177,7 +193,7 @@ The default `json-contracts/` folder includes examples from different app catego
 | `legal-client-intake` | Legal tech intake | Matter routing and conflict-check data. |
 | `expense-report` | Finance/expense apps | Reimbursement and expense line items. |
 
-Each one uses the same MCP tools: read the contract, let the model produce JSON, validate it, and repair if needed. New apps should not need a new bespoke prompt framework just to get reliable JSON.
+Each one uses the same MCP tools: read the contract, let the model create or edit JSON, validate it, and repair if needed. New apps should not need a new bespoke prompt framework just to get reliable JSON.
 
 ## MCP resources
 
@@ -230,7 +246,7 @@ Input:
 }
 ```
 
-Returns the selected contract's description, rules, schema, and examples.
+Returns the selected contract's description, rules, operations, schema, and examples.
 
 ### `get_json_contract`
 
@@ -249,6 +265,7 @@ Output:
 ```json
 {
   "contract": "support-ticket",
+  "operation": "create",
   "instructions": [
     "Convert the input into JSON.",
     "Return JSON only.",
@@ -266,14 +283,66 @@ Output:
     "Summary must be under 80 characters.",
     "Category must be authentication, billing, bug, feature_request, or other."
   ],
+  "operationRules": [],
   "schema": {},
   "examples": [],
+  "operationExamples": [],
   "input": "Urgent, users cannot log in after SSO update.",
   "context": {}
 }
 ```
 
 The agent/model uses this contract to produce JSON. The MCP server does not produce it.
+
+### `get_edit_contract`
+
+Input:
+
+```json
+{
+  "contract": "create-filter",
+  "currentJson": {
+    "status": "open",
+    "limit": 50
+  },
+  "input": "we want the last 20 closed tickets",
+  "context": {}
+}
+```
+
+Output:
+
+```json
+{
+  "contract": "create-filter",
+  "operation": "edit",
+  "instructions": [
+    "Start from currentJson.",
+    "Apply only the user's requested change.",
+    "Preserve all unspecified fields exactly.",
+    "Return the complete updated JSON object, not a patch.",
+    "Return JSON only."
+  ],
+  "description": "Convert natural language into a structured API filter object.",
+  "rules": [
+    "Only include fields that are explicitly requested or clearly implied."
+  ],
+  "operationRules": [
+    "Preserve all unspecified fields exactly."
+  ],
+  "schema": {},
+  "examples": [],
+  "operationExamples": [],
+  "currentJson": {
+    "status": "open",
+    "limit": 50
+  },
+  "input": "we want the last 20 closed tickets",
+  "context": {}
+}
+```
+
+The agent/model uses this edit contract to return the complete updated JSON object. The MCP server first validates `currentJson` against the selected contract, and the agent should validate the edited object with `validate_json` afterward.
 
 #### Context and system variables
 
@@ -410,6 +479,7 @@ Output:
 The server also exposes reusable prompt helpers for MCP hosts that support prompts:
 
 - `json_contract_prompt`
+- `edit_contract_prompt`
 - `repair_contract_prompt`
 
 These prompts only render contract text for the agent/model. They do not call a model and they do not generate JSON inside the MCP server.
@@ -479,6 +549,35 @@ MCP returns:
 
 If invalid, the agent calls `get_repair_contract`, uses its own model to repair, and calls `validate_json` again.
 
+### Edit flow
+
+For existing JSON, the agent calls `get_edit_contract` with the current JSON plus a natural-language change request:
+
+```json
+{
+  "tool": "get_edit_contract",
+  "arguments": {
+    "contract": "create-filter",
+    "currentJson": {
+      "status": "open",
+      "limit": 50
+    },
+    "input": "we want the last 20 closed tickets"
+  }
+}
+```
+
+The model returns the complete edited object:
+
+```json
+{
+  "status": "closed",
+  "limit": 20
+}
+```
+
+Then the agent validates that final edited object with `validate_json`.
+
 ## Studio quickstart
 
 Think of this like a local Next.js-style quickstart for testing schemas and JSON repair loops.
@@ -496,7 +595,7 @@ Open:
 http://127.0.0.1:5177
 ```
 
-The Studio opens in **LLM API key mode** by default. You can switch to **Manual mode** if you want to copy/paste payloads into a separate model.
+The Studio opens in **LLM API key mode** by default. Use the operation selector to choose **Create new JSON** or **Edit existing JSON**. You can switch to **Manual mode** if you want to copy/paste payloads into a separate model.
 
 ### LLM API key mode
 
@@ -508,20 +607,22 @@ For a 30-60 second live test:
 4. Type any model name.
 5. Choose a thinking level: `off`, `low`, `medium`, `high`, `xhigh`, or `auto`.
 6. Leave **Advanced provider settings** blank unless you are using a custom endpoint.
-7. Optionally tick **Save config** and **Save as default provider/model** to write the selected provider settings to your local `.env`.
-8. Click **Generate JSON**.
+7. Optionally tick **Save config** and **Save as default provider/model** to write the selected provider settings to your local `.env` immediately.
+8. Choose **Create new JSON** or **Edit existing JSON**. For edit, paste the existing JSON and describe the requested change.
+9. Click **Generate JSON** or **Generate edited JSON**.
 
 ### Manual mode
 
 No provider key required.
 
 1. Pick a contract.
-2. Paste natural-language input.
-3. Click **Get JSON contract**.
-4. Copy that payload into any model or agent.
-5. Paste the model JSON back into Studio.
-6. Click **Validate JSON**.
-7. If invalid, click **Get repair contract**, give that to the model, and validate again.
+2. Choose **Create new JSON** or **Edit existing JSON**.
+3. Paste natural-language input. For edit, also paste the existing JSON.
+4. Click **Get JSON contract** or **Get edit contract**.
+5. Copy that payload into any model or agent.
+6. Paste the model JSON back into Studio.
+7. Click **Validate JSON**.
+8. If invalid, click **Get repair contract**, give that to the model, and validate again.
 
 The Studio supports:
 
@@ -537,7 +638,7 @@ The Studio supports:
 - Mistral
 - Custom OpenAI-compatible endpoints
 
-Keys pasted into the browser are sent only to the local Studio server for the current request. They are saved only when you tick **Save config**, which writes to the local project `.env`. API keys are written to provider-specific variables such as `OPENAI_API_KEY`; the custom OpenAI-compatible provider uses `LLM_API_KEY`.
+Keys pasted into the browser are sent only to the local Studio server. They are saved only when you tick **Save config**, which writes to the local project `.env` immediately. API keys are written to provider-specific variables such as `OPENAI_API_KEY`; the custom OpenAI-compatible provider uses `LLM_API_KEY`.
 
 If you prefer to create `.env` manually, copy `examples/studio/.env.example` to `.env` and fill in values such as:
 
@@ -632,6 +733,20 @@ The MCP server in `prompt-to-json`:
 - prevents path traversal
 
 The optional Studio example can call LLM providers only when you configure a key in the local UI or `.env` file; those provider calls are not part of the MCP stdio server.
+
+## Licensing and trademarks
+
+Project owner: **Harry Giunta**.
+
+Licensing model:
+
+- Runtime code, docs, examples, tests, and project infrastructure are licensed under **Apache-2.0**. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+- Official starter contracts in [`json-contracts/`](json-contracts/) are licensed under **Apache-2.0 OR MIT**, at your option. See [`json-contracts/LICENSE.md`](json-contracts/LICENSE.md).
+- Third-party or marketplace contract packs may use creator-selected licenses. They should include their own license file or license metadata and must not imply official status unless approved.
+
+The project name **prompt-to-json** is subject to the trademark policy in [`TRADEMARKS.md`](TRADEMARKS.md). Copyright licenses do not grant trademark rights.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution licensing and project guidelines.
 
 ## Development
 

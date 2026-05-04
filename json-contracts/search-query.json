@@ -21,10 +21,16 @@
       },
       "sort": {
         "type": "string",
-        "enum": ["relevance", "newest", "oldest"]
+        "enum": [
+          "relevance",
+          "newest",
+          "oldest"
+        ]
       }
     },
-    "required": ["query"]
+    "required": [
+      "query"
+    ]
   },
   "examples": [
     {
@@ -34,5 +40,30 @@
         "sort": "newest"
       }
     }
-  ]
+  ],
+  "operations": {
+    "edit": {
+      "enabled": true,
+      "return": "full_object",
+      "rules": [
+        "Start from currentJson.",
+        "Apply only the user's requested change.",
+        "Preserve all unspecified fields exactly.",
+        "Return the complete updated JSON object."
+      ],
+      "examples": [
+        {
+          "currentJson": {
+            "query": "billing docs",
+            "sort": "newest"
+          },
+          "input": "search security docs instead and sort by relevance",
+          "output": {
+            "query": "security docs",
+            "sort": "relevance"
+          }
+        }
+      ]
+    }
+  }
 }

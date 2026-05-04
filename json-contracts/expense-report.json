@@ -43,7 +43,13 @@
       },
       "paymentMethod": {
         "type": "string",
-        "enum": ["personal_card", "company_card", "cash", "ach", "unknown"]
+        "enum": [
+          "personal_card",
+          "company_card",
+          "cash",
+          "ach",
+          "unknown"
+        ]
       },
       "reimbursable": {
         "type": "boolean"
@@ -75,7 +81,13 @@
         "maxLength": 500
       }
     },
-    "required": ["category", "paymentMethod", "reimbursable", "taxDeductibleCandidate", "policyFlags"]
+    "required": [
+      "category",
+      "paymentMethod",
+      "reimbursable",
+      "taxDeductibleCandidate",
+      "policyFlags"
+    ]
   },
   "examples": [
     {
@@ -94,5 +106,48 @@
         "notes": "Client trip expense."
       }
     }
-  ]
+  ],
+  "operations": {
+    "edit": {
+      "enabled": true,
+      "return": "full_object",
+      "rules": [
+        "Start from currentJson.",
+        "Apply only the user's requested change.",
+        "Preserve all unspecified fields exactly.",
+        "Return the complete updated JSON object."
+      ],
+      "examples": [
+        {
+          "currentJson": {
+            "merchant": "Delta",
+            "transactionDate": "2026-04-30",
+            "amount": 84.23,
+            "currency": "USD",
+            "category": "travel",
+            "paymentMethod": "personal_card",
+            "reimbursable": true,
+            "projectCode": "ACME-42",
+            "taxDeductibleCandidate": true,
+            "policyFlags": [],
+            "notes": "Client trip expense."
+          },
+          "input": "this was on the company card, so it is not reimbursable",
+          "output": {
+            "merchant": "Delta",
+            "transactionDate": "2026-04-30",
+            "amount": 84.23,
+            "currency": "USD",
+            "category": "travel",
+            "paymentMethod": "company_card",
+            "reimbursable": false,
+            "projectCode": "ACME-42",
+            "taxDeductibleCandidate": true,
+            "policyFlags": [],
+            "notes": "Client trip expense."
+          }
+        }
+      ]
+    }
+  }
 }

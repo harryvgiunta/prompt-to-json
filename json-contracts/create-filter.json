@@ -5,6 +5,34 @@
     "Use ISO 8601 dates for createdAfter and createdBefore.",
     "Status must be open, closed, pending, or archived."
   ],
+  "operations": {
+    "create": {
+      "enabled": true
+    },
+    "edit": {
+      "enabled": true,
+      "return": "full_object",
+      "rules": [
+        "Start from currentJson.",
+        "Apply only the user's requested change.",
+        "Preserve all unspecified fields exactly.",
+        "Return the complete updated filter object."
+      ],
+      "examples": [
+        {
+          "currentJson": {
+            "status": "open",
+            "limit": 50
+          },
+          "input": "we want the last 20 closed tickets",
+          "output": {
+            "status": "closed",
+            "limit": 20
+          }
+        }
+      ]
+    }
+  },
   "schema": {
     "type": "object",
     "additionalProperties": false,

@@ -65,6 +65,11 @@
           <button class="tab-button" type="button" data-mode="manual">Manual mode</button>
         </nav>
 
+        <nav class="operation-tabs" aria-label="JSON operation">
+          <button class="operation-button active" type="button" data-operation="create">Create new JSON</button>
+          <button class="operation-button" type="button" data-operation="edit">Edit existing JSON</button>
+        </nav>
+
         <section id="manualModePanel" class="mode-panel hidden">
           <section class="panel">
             <div class="panel-title-row">
@@ -76,7 +81,12 @@
 
             <p class="muted">No provider key required. Copy this payload into any model or agent, then paste the model JSON back here.</p>
 
-            <label class="field-label" for="sourceInput">Input to convert</label>
+            <div id="manualEditFields" class="edit-fields hidden">
+              <label class="field-label" for="currentJsonInput">Existing JSON to edit</label>
+              <textarea id="currentJsonInput" class="text-area json-area" spellcheck="false" placeholder='{"status":"open","limit":50}'></textarea>
+            </div>
+
+            <label id="sourceInputLabel" class="field-label" for="sourceInput">Input to convert</label>
             <textarea id="sourceInput" class="text-area" spellcheck="false" placeholder="Example: Urgent, users cannot log in after SSO update."></textarea>
 
             <label class="field-label stacked-label" for="contextInput">Extra context JSON optional</label>
@@ -89,7 +99,7 @@
             </div>
 
             <div id="jsonContractStatus" class="status hidden" role="status"></div>
-            <pre id="jsonContractPayload" class="code-block placeholder">The MCP-style get_json_contract payload will appear here.</pre>
+            <pre id="jsonContractPayload" class="code-block placeholder">The MCP-style get_json_contract or get_edit_contract payload will appear here.</pre>
           </section>
 
           <section class="panel">
@@ -133,15 +143,18 @@
         </section>
 
         <section id="llmModePanel" class="mode-panel">
-          <section class="panel">
-            <div class="panel-title-row">
-              <div>
-                <p class="step-label">LLM step 2</p>
-                <h2>Enter provider key and model</h2>
-              </div>
-            </div>
+          <section class="panel collapsible-panel">
+            <details id="llmConfigDetails" open>
+              <summary class="panel-summary">
+                <div>
+                  <p class="step-label">LLM step 2</p>
+                  <h2>Enter provider key and model</h2>
+                </div>
+                <span class="summary-hint">Click to collapse</span>
+              </summary>
 
-            <p class="muted">Keys are sent only to this local Studio server for the current request. They are saved only if you tick <strong>Save config</strong>, which writes to your local <code>.env</code>.</p>
+              <div class="collapsible-body">
+                <p class="muted">Keys are sent only to this local Studio server for the current request. They are saved only if you tick <strong>Save config</strong>, which writes to your local <code>.env</code>.</p>
 
             <div class="form-grid">
               <div>
@@ -180,20 +193,22 @@
             <div class="save-options" aria-label="Optional local config saving">
               <label class="checkbox-field" for="llmSaveConfig">
                 <input id="llmSaveConfig" type="checkbox" />
-                <span>Save config to local <code>.env</code> after generate/repair</span>
+                <span>Save config to local <code>.env</code></span>
               </label>
               <label class="checkbox-field" for="llmSaveAsDefault">
                 <input id="llmSaveAsDefault" type="checkbox" />
                 <span>Save as default provider/model</span>
               </label>
-              <p class="muted small-copy">Leave unchecked to avoid writing anything. When enabled, API keys are saved to provider-specific env vars such as <code>OPENAI_API_KEY</code>; custom providers use <code>LLM_API_KEY</code>.</p>
+              <p class="muted small-copy">Leave unchecked to avoid writing anything. When enabled, the current provider settings are saved immediately and again before generate/repair. API keys are saved to provider-specific env vars such as <code>OPENAI_API_KEY</code>; custom providers use <code>LLM_API_KEY</code>.</p>
             </div>
 
             <div class="button-row">
               <button id="clearApiKey" class="secondary-button" type="button">Clear key</button>
             </div>
 
-            <div id="llmConfigStatus" class="status hidden" role="status"></div>
+                <div id="llmConfigStatus" class="status hidden" role="status"></div>
+              </div>
+            </details>
           </section>
 
           <section class="panel">
@@ -204,7 +219,12 @@
               </div>
             </div>
 
-            <label class="field-label" for="llmSourceInput">Input to convert</label>
+            <div id="llmEditFields" class="edit-fields hidden">
+              <label class="field-label" for="llmCurrentJsonInput">Existing JSON to edit</label>
+              <textarea id="llmCurrentJsonInput" class="text-area json-area" spellcheck="false" placeholder='{"status":"open","limit":50}'></textarea>
+            </div>
+
+            <label id="llmSourceInputLabel" class="field-label" for="llmSourceInput">Input to convert</label>
             <textarea id="llmSourceInput" class="text-area" spellcheck="false" placeholder="Example: Urgent, users cannot log in after SSO update."></textarea>
 
             <label class="field-label stacked-label" for="llmContextInput">Extra context JSON optional</label>
@@ -227,7 +247,7 @@
 
             <div id="llmOutputStatus" class="status hidden" role="status"></div>
             <ul id="llmValidationErrors" class="error-list"></ul>
-            <pre id="llmPayload" class="code-block placeholder">Provider result and validation details will appear here.</pre>
+            <pre id="llmPayload" class="code-block placeholder">Provider result, validation details, and edit diff when applicable will appear here.</pre>
           </section>
         </section>
       </section>
