@@ -69,6 +69,8 @@ const state = {
   lastLlmResult: null
 };
 
+const progressTimers = new WeakMap();
+
 wireEvents();
 await loadLlmProviders();
 await loadContracts();
@@ -87,7 +89,7 @@ function wireEvents() {
   });
 
   elements.contractSelect.addEventListener("change", async () => {
-    await loadContractDetails(elements.contractSelect.value);
+    await loadContractDetails(elements.contractSelect.value, { clearWorkspace: true });
   });
 
   elements.useExampleInput.addEventListener("click", () => {
@@ -450,14 +452,18 @@ function renderContractOptions() {
 }
 
 async function loadContractDetails(contractName, options = {}) {
-  const { forceExampleValues = false } = options;
+  const { forceExampleValues = false, clearWorkspace = false } = options;
   if (!contractName) return;
 
   try {
     const contract = await api(`/api/contracts/${encodeURIComponent(contractName)}`);
     state.currentContract = contract;
     elements.contractSelect.value = contract.contract;
-    renderContractDetails(contract, { forceExampleValues });
+    if (clearWorkspace) clearWorkspaceFields();
+    renderContractDetails(contract, {
+      forceExampleValues,
+      prefillExamples: !clearWorkspace
+    });
     clearContractPayloadState();
     clearValidationState();
     clearRepairState();
@@ -469,7 +475,7 @@ async function loadContractDetails(contractName, options = {}) {
 }
 
 function renderContractDetails(contract, options = {}) {
-  const { forceExampleValues = false } = options;
+  const { forceExampleValues = false, prefillExamples = true } = options;
   elements.contractDescription.textContent = contract.description || "No description provided.";
   elements.rulesList.innerHTML = "";
 
@@ -491,30 +497,32 @@ function renderContractDetails(contract, options = {}) {
     edit: contract.operations?.edit?.examples ?? []
   });
 
-  const example = firstExample();
-  if (example?.input !== undefined) {
-    const text = formatInputValue(example.input);
-    if (forceExampleValues || !elements.sourceInput.value.trim()) elements.sourceInput.value = text;
-    if (forceExampleValues || !elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
-  }
+  if (prefillExamples) {
+    const example = firstExample();
+    if (example?.input !== undefined) {
+      const text = formatInputValue(example.input);
+      if (forceExampleValues || !elements.sourceInput.value.trim()) elements.sourceInput.value = text;
+      if (forceExampleValues || !elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
+    }
 
-  if (example?.output !== undefined) {
-    const json = pretty(example.output);
-    if (forceExampleValues || !elements.jsonOutput.value.trim()) elements.jsonOutput.value = json;
-    if (forceExampleValues || !elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
-    if (forceExampleValues || !elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
-  }
+    if (example?.output !== undefined) {
+      const json = pretty(example.output);
+      if (forceExampleValues || !elements.jsonOutput.value.trim()) elements.jsonOutput.value = json;
+      if (forceExampleValues || !elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
+      if (forceExampleValues || !elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
+    }
 
-  const editExample = firstEditExample();
-  if (editExample?.currentJson !== undefined) {
-    const json = pretty(editExample.currentJson);
-    if (forceExampleValues || !elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
-    if (forceExampleValues || !elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
-  }
-  if (editExample?.input !== undefined && state.operation === "edit") {
-    const text = formatInputValue(editExample.input);
-    if (forceExampleValues || !elements.sourceInput.value.trim()) elements.sourceInput.value = text;
-    if (forceExampleValues || !elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
+    const editExample = firstEditExample();
+    if (editExample?.currentJson !== undefined) {
+      const json = pretty(editExample.currentJson);
+      if (forceExampleValues || !elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
+      if (forceExampleValues || !elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
+    }
+    if (editExample?.input !== undefined && state.operation === "edit") {
+      const text = formatInputValue(editExample.input);
+      if (forceExampleValues || !elements.sourceInput.value.trim()) elements.sourceInput.value = text;
+      if (forceExampleValues || !elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
+    }
   }
 
   updateOperationUi();
@@ -659,7 +667,7 @@ async function generateWithLlm() {
   }
 
   clearLlmValidationState(false);
-  setStatus(elements.llmOutputStatus, "info", `Calling ${selectedProvider()?.label ?? "provider"}…`);
+  const stopProgress = startTimedStatus(elements.llmOutputStatus, `Calling ${selectedProvider()?.label ?? "provider"}`);
 
   try {
     const result = await api(endpoint, {
@@ -667,8 +675,10 @@ async function generateWithLlm() {
       body
     });
 
-    renderLlmResult(result, successPrefix);
+    const elapsedSeconds = stopProgress();
+    renderLlmResult(result, withElapsedSeconds(successPrefix, elapsedSeconds));
   } catch (error) {
+    stopProgress();
     setStatus(elements.llmOutputStatus, "bad", messageFor(error));
   }
 }
@@ -711,7 +721,7 @@ async function repairWithLlm() {
   if (!parsed.ok) return setStatus(elements.llmOutputStatus, "bad", parsed.error);
 
   const validationErrors = state.lastLlmValidation?.valid === false ? state.lastLlmValidation.errors : [];
-  setStatus(elements.llmOutputStatus, "info", `Calling ${selectedProvider()?.label ?? "provider"} to repair…`);
+  const stopProgress = startTimedStatus(elements.llmOutputStatus, `Calling ${selectedProvider()?.label ?? "provider"} to repair`);
 
   try {
     const result = await api("/api/llm/repair", {
@@ -724,8 +734,10 @@ async function repairWithLlm() {
       }
     });
 
-    renderLlmResult(result, "Repaired JSON.");
+    const elapsedSeconds = stopProgress();
+    renderLlmResult(result, withElapsedSeconds("Repaired JSON.", elapsedSeconds));
   } catch (error) {
+    stopProgress();
     setStatus(elements.llmOutputStatus, "bad", messageFor(error));
   }
 }
@@ -913,6 +925,17 @@ function clearLlmValidationState(resetPayload = true) {
   updateButtonState();
 }
 
+function clearWorkspaceFields() {
+  elements.sourceInput.value = "";
+  elements.currentJsonInput.value = "";
+  elements.contextInput.value = "";
+  elements.jsonOutput.value = "";
+  elements.llmSourceInput.value = "";
+  elements.llmCurrentJsonInput.value = "";
+  elements.llmContextInput.value = "";
+  elements.llmJsonOutput.value = "";
+}
+
 function updateButtonState() {
   const hasContract = Boolean(state.currentContract);
   const isEdit = state.operation === "edit";
@@ -1050,11 +1073,44 @@ async function api(path, options = {}) {
 }
 
 function setStatus(element, type, message) {
+  stopTimedStatus(element);
   element.className = `status ${type}`;
   element.textContent = message;
 }
 
+function startTimedStatus(element, message) {
+  stopTimedStatus(element);
+  const startedAt = Date.now();
+
+  const render = () => {
+    const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+    const dots = ".".repeat((elapsed % 3) + 1);
+    element.className = "status info running";
+    element.textContent = `${message}${dots} ${elapsed}s`;
+  };
+
+  render();
+  const timer = setInterval(render, 250);
+  progressTimers.set(element, { timer, startedAt });
+
+  return () => stopTimedStatus(element);
+}
+
+function stopTimedStatus(element) {
+  const progress = progressTimers.get(element);
+  if (!progress) return 0;
+  clearInterval(progress.timer);
+  progressTimers.delete(element);
+  return Math.max(0.1, (Date.now() - progress.startedAt) / 1000);
+}
+
+function withElapsedSeconds(message, seconds) {
+  const rounded = seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds));
+  return `${message} (${rounded}s)`;
+}
+
 function hideStatus(element) {
+  stopTimedStatus(element);
   element.className = "status hidden";
   element.textContent = "";
 }

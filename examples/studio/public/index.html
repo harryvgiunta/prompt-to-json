@@ -231,8 +231,9 @@
             <textarea id="llmContextInput" class="text-area context-area" spellcheck="false" placeholder='{"current_datetime":"2026-05-03T00:00:00Z","email":"JohnnyAppleseed@gmail.com"}'></textarea>
             <p class="muted small-copy">Context is sent to the selected provider in LLM API key mode. Do not include secrets unless the provider should receive them.</p>
 
-            <div class="button-row">
+            <div class="button-row generate-row">
               <button id="llmGenerate" type="button" disabled>Generate JSON</button>
+              <div id="llmOutputStatus" class="status inline-status hidden" role="status"></div>
             </div>
 
             <label class="field-label" for="llmJsonOutput">Generated JSON</label>
@@ -244,7 +245,6 @@
               <button id="llmCopyJson" class="secondary-button" type="button" disabled>Copy JSON</button>
             </div>
 
-            <div id="llmOutputStatus" class="status hidden" role="status"></div>
             <ul id="llmValidationErrors" class="error-list"></ul>
             <pre id="llmPayload" class="code-block placeholder">Provider result, validation details, and edit diff when applicable will appear here.</pre>
           </section>

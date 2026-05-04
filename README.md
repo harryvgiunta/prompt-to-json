@@ -115,7 +115,7 @@ Create files such as:
 ```text
 json-contracts/support-ticket.json
 json-contracts/real-estate-lead.json
-json-contracts/search-query.json
+json-contracts/chart-generation.json
 ```
 
 Each file contains:
@@ -268,8 +268,8 @@ The default `json-contracts/` folder includes examples from different app catego
 | Contract | Industry/app pattern | Converts natural language into |
 | --- | --- | --- |
 | `support-ticket` | SaaS support | Triage-ready support tickets. |
-| `search-query` | Knowledge/search apps | Structured search queries. |
 | `create-filter` | Internal tools/API builders | API filter objects. |
+| `chart-generation` | BI/analytics tools | Dashboard chart generation specs. |
 | `patient-intake` | Healthcare intake | Triage and appointment-routing objects. |
 | `ecommerce-return` | Ecommerce support | Return, refund, exchange, and warranty requests. |
 | `real-estate-lead` | Real estate CRM | Buyer, renter, seller, and lease lead profiles. |
@@ -290,8 +290,8 @@ Examples:
 
 ```text
 json-contract://support-ticket
-json-contract://search-query
 json-contract://create-filter
+json-contract://chart-generation
 ```
 
 `resources/list` returns all loaded contracts. `resources/read` returns the normalized full contract JSON.
@@ -553,7 +553,7 @@ Output:
 ```json
 {
   "loaded": 3,
-  "contracts": ["support-ticket", "search-query", "create-filter"]
+  "contracts": ["support-ticket", "create-filter", "chart-generation"]
 }
 ```
 
