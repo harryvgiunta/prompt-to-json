@@ -98,7 +98,7 @@ Schema Explorer shows:
 
 ## App context JSON
 
-The Generate JSON and New contract flows include an **App context optional** toolbox. Use it for generic app/system variables your app might already know, such as current date/time, created/updated timestamps, unique IDs, user, session, or workspace.
+The Generate JSON and New contract flows include an **App context (optional)** toolbox. Use it for generic app/system variables your app might already know, such as current date/time, created/updated timestamps, unique IDs, user, session, or workspace.
 
 Click preset buttons like **Current date/time**, **Created at**, **Unique ID**, **User**, **Session**, or **Workspace** to merge generated context into the JSON field. **Pretty format** parses and formats manually edited context.
 

@@ -37,7 +37,9 @@
           <input id="contractsDirInput" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="C:\\path\\to\\json-contracts" />
           <div class="button-row compact-row">
             <button id="applyContractsDir" class="secondary-button" type="button">Use folder</button>
+            <button id="reloadContracts" class="secondary-button" type="button">Reload contracts</button>
           </div>
+          <p class="muted small-copy">Add <code>.json</code> contracts to the configured repository, then Reload.</p>
           <div id="contractsDirStatus" class="status hidden" role="status"></div>
         </details>
 
@@ -109,7 +111,7 @@
               <h2>Choose a contract</h2>
             </div>
             <div class="panel-title-actions">
-              <button id="reloadContracts" class="secondary-button" type="button">Reload contracts</button>
+              <button id="toggleConfigFromStep" class="secondary-button config-gear-button" type="button" aria-expanded="true" aria-controls="configSidebar" title="Show or hide configuration" aria-label="Show or hide configuration">⚙</button>
               <button class="step-collapse-button" type="button" aria-expanded="true">
                 <span class="collapse-action">Collapse</span>
                 <span class="collapse-icon" aria-hidden="true">−</span>
@@ -127,17 +129,24 @@
             <details class="rules-details">
               <summary>Rules</summary>
               <div class="rules-editor-shell">
-                <div class="rules-toolbar" aria-label="Rule actions">
-                  <button id="editRules" class="secondary-button" type="button" aria-pressed="false">Edit rules</button>
-                  <button id="saveRules" type="button" disabled>Save rules</button>
-                  <button id="cancelRulesEdit" class="secondary-button hidden" type="button">Cancel</button>
+                <div class="rules-main-toolbar" aria-label="Rule actions">
+                  <div class="rules-toolbar-left">
+                    <span class="muted small-copy">Rules guide the model in addition to the schema.</span>
+                  </div>
+                  <div class="rules-toolbar-right">
+                    <button id="editRules" class="secondary-button" type="button" aria-pressed="false">Edit rules</button>
+                    <button id="saveRules" type="button" disabled>Save rules</button>
+                  </div>
                 </div>
                 <ul id="rulesList" class="rules-list"></ul>
                 <div id="rulesEditPanel" class="rules-edit-panel hidden">
                   <p class="schema-edit-warning">Warning: editing will permanently change the contract file when you save.</p>
                   <label class="field-label" for="rulesEditor">Editable rules, one per line</label>
                   <textarea id="rulesEditor" class="text-area rules-editor" spellcheck="true" placeholder="One rule per line"></textarea>
-                  <p class="muted small-copy">Rules guide the model in addition to the schema. Keep them specific and testable.</p>
+                  <p class="muted small-copy">Keep rules specific and testable.</p>
+                  <div class="schema-edit-actions">
+                    <button id="cancelRulesEdit" class="secondary-button" type="button">Discard changes</button>
+                  </div>
                 </div>
                 <div id="rulesEditStatus" class="status hidden" role="status"></div>
               </div>
@@ -146,21 +155,21 @@
             <details class="schema-explorer-details">
               <summary>Schema Explorer</summary>
               <div class="schema-explorer">
-                <div class="schema-view-toolbar" aria-label="Schema view actions">
-                  <button id="schemaViewToggle" class="secondary-button" type="button" aria-pressed="false">View raw JSON</button>
-                  <button id="editSchema" class="secondary-button" type="button" aria-pressed="false">Edit schema</button>
-                  <button id="saveSchemaEdit" type="button" disabled>Save schema</button>
-                  <button id="copySchemaJson" class="secondary-button" type="button">Copy schema</button>
+                <div class="schema-main-toolbar" aria-label="Schema actions">
+                  <div class="schema-toolbar-left">
+                    <button id="expandSchemaTree" class="secondary-button" type="button">Expand all</button>
+                    <button id="collapseSchemaTree" class="secondary-button" type="button">Collapse all</button>
+                    <button id="schemaViewToggle" class="secondary-button" type="button" aria-pressed="false">View raw JSON</button>
+                  </div>
+                  <div class="schema-toolbar-right">
+                    <button id="editSchema" class="secondary-button" type="button" aria-pressed="false">Edit schema</button>
+                    <button id="saveSchemaEdit" type="button" disabled>Save schema</button>
+                  </div>
                 </div>
 
                 <div id="schemaExplorerView" class="schema-view">
                   <label class="field-label" for="schemaSearchInput">Search fields, paths, types, or enum values</label>
                   <input id="schemaSearchInput" class="text-input" type="search" autocomplete="off" spellcheck="false" placeholder="Example: severity, required, date-time, enum" />
-
-                  <div class="schema-toolbar" aria-label="Schema explorer actions">
-                    <button id="expandSchemaTree" class="secondary-button" type="button">Expand all</button>
-                    <button id="collapseSchemaTree" class="secondary-button" type="button">Collapse all</button>
-                  </div>
 
                   <div id="schemaRootActions" class="schema-root-actions hidden" aria-label="Root schema edit actions">
                     <span>Root</span>
@@ -173,6 +182,7 @@
                 </div>
 
                 <div id="schemaRawView" class="schema-view schema-raw-view hidden">
+                  <button id="copyRawSchemaJson" class="schema-copy-button" type="button" title="Copy raw JSON Schema" aria-label="Copy raw JSON Schema">⧉</button>
                   <pre id="schemaPreview" class="code-block schema-raw"></pre>
                 </div>
 
@@ -193,10 +203,6 @@
               <summary>Examples</summary>
               <pre id="examplesPreview" class="code-block small"></pre>
             </details>
-
-            <div class="note-box">
-              Add <code>.json</code> contracts to the configured repository, then Reload.
-            </div>
           </div>
         </section>
 
@@ -237,7 +243,7 @@
               <div class="context-toolbox" data-context-target="llmContextInput">
                 <div class="context-toolbox-header">
                   <div>
-                    <label class="field-label" for="llmContextInput">App context optional</label>
+                    <label class="field-label" for="llmContextInput">App context (optional)</label>
                     <p class="muted small-copy">Add generic values your app might already know, like current time, user, IDs, or timestamps.</p>
                   </div>
                   <div class="context-toolbox-actions">
@@ -316,7 +322,7 @@
               <div class="context-toolbox" data-context-target="newContractContext">
                 <div class="context-toolbox-header">
                   <div>
-                    <label class="field-label" for="newContractContext">App context optional</label>
+                    <label class="field-label" for="newContractContext">App context (optional)</label>
                     <p class="muted small-copy">Add generic values your app might already know, like current time, user, IDs, or timestamps.</p>
                   </div>
                   <div class="context-toolbox-actions">

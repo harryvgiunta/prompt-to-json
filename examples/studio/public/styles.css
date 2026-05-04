@@ -405,6 +405,13 @@ h2 {
   justify-content: flex-end;
 }
 
+.config-gear-button {
+  font-size: 1rem;
+  min-width: 2.75rem;
+  padding-left: 0.7rem;
+  padding-right: 0.7rem;
+}
+
 .step-collapse-button {
   align-items: center;
   background: #fff;
@@ -599,10 +606,30 @@ summary {
   margin-top: 0.75rem;
 }
 
-.rules-toolbar {
+.rules-main-toolbar,
+.rules-toolbar-left,
+.rules-toolbar-right {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.rules-main-toolbar {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rules-toolbar-left,
+.rules-toolbar-right {
+  align-items: center;
+}
+
+.rules-toolbar-right {
+  justify-content: flex-end;
+}
+
+.rules-toolbar-left .muted {
+  margin: 0;
 }
 
 .rules-list,
@@ -674,15 +701,26 @@ summary {
   text-transform: uppercase;
 }
 
-.schema-view-toolbar,
-.schema-toolbar {
+.schema-main-toolbar,
+.schema-toolbar-left,
+.schema-toolbar-right {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.schema-view-toolbar {
+.schema-main-toolbar {
+  align-items: center;
   justify-content: space-between;
+}
+
+.schema-toolbar-left,
+.schema-toolbar-right {
+  align-items: center;
+}
+
+.schema-toolbar-right {
+  justify-content: flex-end;
 }
 
 .schema-view {
@@ -881,6 +919,30 @@ summary {
   padding-top: 0.85rem;
 }
 
+.schema-raw-view {
+  position: relative;
+}
+
+.schema-copy-button {
+  background: #fff;
+  border: 1px solid #fff;
+  color: #000;
+  font-size: 1rem;
+  font-weight: 900;
+  height: 2rem;
+  padding: 0;
+  position: absolute;
+  right: 0.75rem;
+  top: 1.6rem;
+  width: 2rem;
+  z-index: 2;
+}
+
+.schema-copy-button:hover:not(:disabled) {
+  background: #dcdcdc;
+  border-color: #dcdcdc;
+}
+
 .schema-edit-warning {
   border: 1px solid var(--bad);
   color: var(--bad);
@@ -1052,15 +1114,21 @@ code {
   .panel-title-actions,
   .context-toolbox-header,
   .context-toolbox-actions,
-  .schema-view-toolbar {
+  .schema-main-toolbar,
+  .schema-toolbar-left,
+  .schema-toolbar-right,
+  .rules-main-toolbar,
+  .rules-toolbar-left,
+  .rules-toolbar-right {
     justify-content: flex-start;
     width: 100%;
   }
 
   .panel-title-actions button,
   .context-toolbox-actions button,
-  .schema-view-toolbar button,
-  .rules-toolbar button {
+  .schema-toolbar-left button,
+  .schema-toolbar-right button,
+  .rules-toolbar-right button {
     flex: 1 1 auto;
   }
 

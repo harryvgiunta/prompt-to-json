@@ -2,6 +2,7 @@ const elements = {
   studioShell: document.querySelector("#studioShell"),
   configSidebar: document.querySelector("#configSidebar"),
   toggleConfigSidebar: document.querySelector("#toggleConfigSidebar"),
+  toggleConfigFromStep: document.querySelector("#toggleConfigFromStep"),
   modeTabs: [...document.querySelectorAll(".tab-button")],
   operationTabs: document.querySelector("#operationTabs"),
   operationButtons: [...document.querySelectorAll(".operation-button")],
@@ -41,7 +42,7 @@ const elements = {
   schemaSummaryCards: document.querySelector("#schemaSummaryCards"),
   expandSchemaTree: document.querySelector("#expandSchemaTree"),
   collapseSchemaTree: document.querySelector("#collapseSchemaTree"),
-  copySchemaJson: document.querySelector("#copySchemaJson"),
+  copyRawSchemaJson: document.querySelector("#copyRawSchemaJson"),
   schemaTree: document.querySelector("#schemaTree"),
   schemaEmptyState: document.querySelector("#schemaEmptyState"),
   schemaPreview: document.querySelector("#schemaPreview"),
@@ -96,6 +97,7 @@ const state = {
   schemaExplorerEditing: false,
   originalRules: [],
   rulesEditing: false,
+  schemaReturnViewAfterEdit: "explorer",
   lastLlmValidation: null,
   lastLlmResult: null,
   lastContractDraftValidation: null
@@ -110,11 +112,8 @@ await loadContractsDirConfig();
 await loadContracts();
 
 function wireEvents() {
-  elements.toggleConfigSidebar.addEventListener("click", () => {
-    state.configSidebarOpen = !state.configSidebarOpen;
-    saveConfigSidebarPreference();
-    applyConfigSidebarState();
-  });
+  elements.toggleConfigSidebar.addEventListener("click", () => toggleConfigSidebar());
+  elements.toggleConfigFromStep.addEventListener("click", () => toggleConfigSidebar());
 
   for (const button of elements.stepCollapseButtons) {
     button.addEventListener("click", () => toggleStepPanel(button));
@@ -168,6 +167,11 @@ function wireEvents() {
   });
 
   elements.editSchema.addEventListener("click", () => {
+    if (!elements.schemaRawView.classList.contains("hidden")) {
+      enterSchemaEditMode({ returnView: "raw" });
+      return;
+    }
+
     setSchemaExplorerEditing(!state.schemaExplorerEditing);
   });
 
@@ -209,11 +213,9 @@ function wireEvents() {
     setSchemaTreeExpanded(false);
   });
 
-  elements.copySchemaJson.addEventListener("click", async () => {
-    const text = elements.schemaEditView.classList.contains("hidden")
-      ? elements.schemaPreview.textContent.trim()
-      : elements.schemaEditor.value.trim();
-    if (text) await copyText(text, "Copied JSON Schema.");
+  elements.copyRawSchemaJson.addEventListener("click", async () => {
+    const text = elements.schemaPreview.textContent.trim();
+    if (text) await copyText(text, "Copied raw JSON Schema.");
   });
 
   elements.llmProvider.addEventListener("change", () => {
@@ -321,6 +323,12 @@ function restoreConfigSidebarState() {
   applyConfigSidebarState();
 }
 
+function toggleConfigSidebar() {
+  state.configSidebarOpen = !state.configSidebarOpen;
+  saveConfigSidebarPreference();
+  applyConfigSidebarState();
+}
+
 function saveConfigSidebarPreference() {
   try {
     localStorage.setItem("prompt-to-json.studio.configSidebarOpen", String(state.configSidebarOpen));
@@ -338,6 +346,9 @@ function applyConfigSidebarState() {
   elements.toggleConfigSidebar.setAttribute("aria-expanded", String(isOpen));
   elements.toggleConfigSidebar.setAttribute("aria-label", isOpen ? "Hide configuration" : "Show configuration");
   elements.toggleConfigSidebar.title = isOpen ? "Hide configuration" : "Show configuration";
+  elements.toggleConfigFromStep.setAttribute("aria-expanded", String(isOpen));
+  elements.toggleConfigFromStep.title = isOpen ? "Hide configuration" : "Show configuration";
+  elements.toggleConfigFromStep.setAttribute("aria-label", isOpen ? "Hide configuration" : "Show configuration");
 }
 
 function initializeStepCollapseState() {
@@ -636,7 +647,7 @@ async function loadContractsDirConfig() {
   try {
     const config = await api("/api/contracts-dir");
     elements.contractsDirInput.value = config.contractsDir ?? "";
-    setStatus(elements.contractsDirStatus, "info", `Using ${config.contractsDir}. Loaded contracts: ${(config.contracts ?? []).length}.`);
+    setStatus(elements.contractsDirStatus, "info", `Loaded ${(config.contracts ?? []).length} contract(s).`);
   } catch (error) {
     setStatus(elements.contractsDirStatus, "bad", messageFor(error));
   }
@@ -654,7 +665,7 @@ async function applyContractsDir() {
       body: { contractsDir }
     });
     elements.contractsDirInput.value = result.contractsDir ?? contractsDir;
-    setStatus(elements.contractsDirStatus, "good", `Using ${result.contractsDir}. Loaded ${result.loaded ?? 0} contract(s).`);
+    setStatus(elements.contractsDirStatus, "good", `Loaded ${result.loaded ?? 0} contract(s).`);
     clearWorkspaceFields();
     await loadContracts({ forceExampleValues: false });
     toast("Contract repository switched.");
@@ -839,7 +850,6 @@ function renderRules(rules) {
 function setRulesEditing(enabled) {
   state.rulesEditing = enabled;
   elements.rulesEditPanel.classList.toggle("hidden", !enabled);
-  elements.cancelRulesEdit.classList.toggle("hidden", !enabled);
   elements.rulesList.classList.toggle("hidden", enabled);
   elements.editRules.textContent = enabled ? "Done editing" : "Edit rules";
   elements.editRules.setAttribute("aria-pressed", String(enabled));
@@ -925,15 +935,23 @@ async function saveRulesEdit() {
 function setSchemaView(view) {
   const showRaw = view === "raw";
   const showEdit = view === "edit";
+
+  if (showRaw || showEdit) {
+    state.schemaExplorerEditing = false;
+    elements.contractPanel.classList.remove("schema-editing");
+  }
+
   elements.schemaExplorerView.classList.toggle("hidden", showRaw || showEdit);
   elements.schemaRawView.classList.toggle("hidden", !showRaw);
   elements.schemaEditView.classList.toggle("hidden", !showEdit);
   elements.schemaViewToggle.textContent = showRaw ? "View explorer" : "View raw JSON";
   elements.schemaViewToggle.disabled = showEdit;
+  elements.expandSchemaTree.disabled = showRaw || showEdit;
+  elements.collapseSchemaTree.disabled = showRaw || showEdit;
   elements.schemaViewToggle.setAttribute("aria-pressed", String(showRaw));
   elements.schemaViewToggle.setAttribute("aria-label", showRaw ? "View schema explorer" : "View raw JSON Schema");
   elements.editSchema.disabled = showEdit;
-  elements.editSchema.textContent = state.schemaExplorerEditing ? "Done editing" : "Edit schema";
+  elements.editSchema.textContent = showRaw ? "Edit raw JSON" : state.schemaExplorerEditing ? "Done editing" : "Edit schema";
   elements.editSchema.setAttribute("aria-pressed", String(state.schemaExplorerEditing));
   elements.schemaRootActions.classList.toggle("hidden", !state.schemaExplorerEditing || showRaw || showEdit);
 }
@@ -948,7 +966,8 @@ function setSchemaExplorerEditing(enabled, options = {}) {
   if (options.render !== false) renderSchemaExplorer(currentSchemaDraft());
 }
 
-function enterSchemaEditMode() {
+function enterSchemaEditMode(options = {}) {
+  state.schemaReturnViewAfterEdit = options.returnView ?? "explorer";
   elements.schemaEditor.value = pretty(currentSchemaDraft());
   hideStatus(elements.schemaEditStatus);
   updateSchemaEditButtonState();
@@ -958,9 +977,10 @@ function enterSchemaEditMode() {
 
 function cancelSchemaEdit() {
   const original = cloneJson(state.originalSchemaJson ?? {});
+  const returnView = state.schemaReturnViewAfterEdit || "explorer";
   applySchemaDraft(original, { quiet: true });
   hideStatus(elements.schemaEditStatus);
-  setSchemaView("explorer");
+  setSchemaView(returnView);
   toast("Discarded schema changes.");
 }
 
@@ -1042,11 +1062,12 @@ async function saveSchemaEdit() {
     elements.schemaEditor.value = pretty(result.schema);
     updateSchemaEditButtonState();
     renderSchemaExplorer(result.schema);
+    const returnView = state.schemaReturnViewAfterEdit || "explorer";
     setStatus(elements.schemaEditStatus, "good", `Saved schema to ${result.path}. Contracts reloaded.`);
     toast("Schema saved to contract file.");
 
     await loadContractDetails(result.contractName ?? contract, { clearWorkspace: false });
-    setSchemaView("explorer");
+    setSchemaView(returnView);
   } catch (error) {
     setStatus(elements.schemaEditStatus, "bad", messageFor(error));
   }
@@ -1164,7 +1185,7 @@ function renderSchemaNodeElement(node, depth) {
   const element = document.createElement("details");
   element.className = "schema-node";
   element.dataset.search = schemaNodeSearchText(node);
-  element.open = depth < 1;
+  element.open = false;
 
   const summary = document.createElement("summary");
   summary.className = "schema-node-summary";
