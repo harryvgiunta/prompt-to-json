@@ -11,65 +11,147 @@
       <div>
         <p class="eyebrow">prompt-to-json</p>
         <h1>Studio</h1>
+        <p class="hero-copy">Generate, validate, repair, and draft contract-backed JSON from one local workspace.</p>
       </div>
       <div class="hero-card" aria-label="How this studio works">
-        <span class="pill">No API keys in manual mode</span>
         <span class="pill">Local Studio server</span>
+        <span class="pill">Plain dark UI</span>
         <span class="pill">JSON Schema validation</span>
       </div>
     </header>
 
-    <main class="studio-shell">
-      <aside class="panel sidebar">
+    <main id="studioShell" class="studio-shell">
+      <aside id="configSidebar" class="panel sidebar configuration-panel" aria-label="Studio configuration">
         <div class="panel-title-row">
           <div>
-            <p class="step-label">Step 1</p>
-            <h2>Choose a contract</h2>
+            <p class="step-label">Configuration</p>
+            <h2>Set up your workspace</h2>
           </div>
-          <button id="reloadContracts" class="secondary-button" type="button">Reload contracts</button>
         </div>
 
-        <label class="field-label" for="contractsDirInput">Contract repository folder</label>
-        <input id="contractsDirInput" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="C:\\path\\to\\json-contracts" />
-        <div class="button-row compact-row">
-          <button id="applyContractsDir" class="secondary-button" type="button">Use folder</button>
-        </div>
-        <div id="contractsDirStatus" class="status hidden" role="status"></div>
+        <p class="muted intro-copy">Use this sidebar for setup. Hide it when you are ready to work.</p>
 
-        <label class="field-label stacked-label" for="contractSelect">Contract</label>
-        <select id="contractSelect"></select>
-        <p id="contractDescription" class="muted">Loading contracts…</p>
-
-        <div class="quick-actions" aria-label="Example actions">
-          <button id="useExampleInput" class="secondary-button" type="button">Use example input</button>
-          <button id="useExampleOutput" class="secondary-button" type="button">Use example JSON</button>
-          <button id="useInvalidExample" class="secondary-button" type="button">Use invalid JSON</button>
-        </div>
-
-        <details open>
-          <summary>Rules</summary>
-          <ul id="rulesList" class="rules-list"></ul>
+        <details class="config-section" open>
+          <summary>Contract repository</summary>
+          <label class="field-label" for="contractsDirInput">Contract repository folder</label>
+          <input id="contractsDirInput" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="C:\\path\\to\\json-contracts" />
+          <div class="button-row compact-row">
+            <button id="applyContractsDir" class="secondary-button" type="button">Use folder</button>
+          </div>
+          <div id="contractsDirStatus" class="status hidden" role="status"></div>
         </details>
 
-        <details>
-          <summary>Schema</summary>
-          <pre id="schemaPreview" class="code-block small"></pre>
-        </details>
+        <details id="llmConfigDetails" class="config-section" open>
+          <summary>LLM provider</summary>
+          <p class="muted small-copy">Keys are sent only to this local Studio server for the current request. They are saved only if you tick <strong>Save config</strong>, which writes to your local <code>.env</code>.</p>
 
-        <details>
-          <summary>Examples</summary>
-          <pre id="examplesPreview" class="code-block small"></pre>
-        </details>
+          <div class="form-grid config-grid">
+            <div>
+              <label class="field-label" for="llmProvider">Provider</label>
+              <select id="llmProvider"></select>
+            </div>
+            <div>
+              <label class="field-label" for="llmModel">Model</label>
+              <input id="llmModel" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="gpt-4.1-mini" />
+            </div>
+            <div>
+              <label class="field-label" for="llmThinking">Thinking</label>
+              <select id="llmThinking">
+                <option value="off">off</option>
+                <option value="low">low</option>
+                <option value="medium" selected>medium</option>
+                <option value="high">high</option>
+                <option value="xhigh">xhigh</option>
+                <option value="auto">auto/omit</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="llmApiKey">API key</label>
+              <input id="llmApiKey" class="text-input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste key for this request" />
+            </div>
+          </div>
 
-        <div class="note-box">
-          Add <code>.json</code> contracts to <code>json-contracts/</code>, then Reload.
-        </div>
+          <details class="advanced-settings">
+            <summary>Advanced provider settings</summary>
+            <label class="field-label" for="llmBaseUrl">Base URL override</label>
+            <input id="llmBaseUrl" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="Leave blank to use the provider default" />
+            <p class="muted small-copy">Leave this blank for built-in cloud providers. Only fill it for Custom OpenAI-compatible providers or if your provider gives you a different endpoint.</p>
+            <p class="muted small-copy">OpenAI-compatible providers use <code>/chat/completions</code>. Ollama uses <code>/api/chat</code>. Anthropic uses <code>/v1/messages</code>.</p>
+          </details>
+
+          <div class="save-options" aria-label="Optional local config saving">
+            <label class="checkbox-field" for="llmSaveConfig">
+              <input id="llmSaveConfig" type="checkbox" />
+              <span>Save config to local <code>.env</code></span>
+            </label>
+            <label class="checkbox-field" for="llmSaveAsDefault">
+              <input id="llmSaveAsDefault" type="checkbox" />
+              <span>Save as default provider/model</span>
+            </label>
+            <p class="muted small-copy">Leave unchecked to avoid writing anything. API keys are saved to provider-specific env vars such as <code>OPENAI_API_KEY</code>; custom providers use <code>LLM_API_KEY</code>.</p>
+          </div>
+
+          <div class="button-row compact-row">
+            <button id="clearApiKey" class="secondary-button" type="button">Clear key</button>
+          </div>
+
+          <div id="llmConfigStatus" class="status hidden" role="status"></div>
+        </details>
       </aside>
 
-      <section class="workspace">
+      <button id="toggleConfigSidebar" class="sidebar-toggle" type="button" aria-expanded="true" aria-controls="configSidebar" aria-label="Hide configuration" title="Hide configuration">‹</button>
+
+      <section class="workspace" aria-label="Studio workflow">
+        <section id="contractPanel" class="panel contract-panel collapsible-step" data-collapse-id="step-1">
+          <div class="panel-title-row">
+            <div>
+              <p class="step-label">Step 1</p>
+              <h2>Choose a contract</h2>
+            </div>
+            <div class="panel-title-actions">
+              <button id="reloadContracts" class="secondary-button" type="button">Reload contracts</button>
+              <button class="step-collapse-button" type="button" aria-expanded="true">
+                <span class="collapse-action">Collapse</span>
+                <span class="collapse-icon" aria-hidden="true">−</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="step-body">
+            <label class="field-label" for="contractSelect">Contract</label>
+            <select id="contractSelect"></select>
+            <p id="contractDescription" class="muted">Loading contracts…</p>
+            <div id="contractStatus" class="status hidden" role="status"></div>
+
+            <div class="quick-actions" aria-label="Example actions">
+              <button id="useExampleInput" class="secondary-button" type="button">Use example input</button>
+              <button id="useExampleOutput" class="secondary-button" type="button">Use example JSON</button>
+              <button id="useInvalidExample" class="secondary-button" type="button">Use invalid JSON</button>
+            </div>
+
+            <details open>
+              <summary>Rules</summary>
+              <ul id="rulesList" class="rules-list"></ul>
+            </details>
+
+            <details>
+              <summary>Schema</summary>
+              <pre id="schemaPreview" class="code-block small"></pre>
+            </details>
+
+            <details>
+              <summary>Examples</summary>
+              <pre id="examplesPreview" class="code-block small"></pre>
+            </details>
+
+            <div class="note-box">
+              Add <code>.json</code> contracts to the configured repository, then Reload.
+            </div>
+          </div>
+        </section>
+
         <nav class="mode-tabs" aria-label="Studio mode">
-          <button class="tab-button active" type="button" data-mode="llm">LLM API key mode</button>
-          <button class="tab-button" type="button" data-mode="manual">Manual mode</button>
+          <button class="tab-button active" type="button" data-mode="llm">Generate JSON</button>
           <button class="tab-button" type="button" data-mode="contract">New contract</button>
         </nav>
 
@@ -78,233 +160,151 @@
           <button class="operation-button" type="button" data-operation="edit">Edit existing JSON</button>
         </nav>
 
-        <section id="manualModePanel" class="mode-panel hidden">
-          <section class="panel">
+        <section id="llmModePanel" class="mode-panel">
+          <section id="llmJsonPanel" class="panel collapsible-step" data-collapse-id="step-2-json">
             <div class="panel-title-row">
               <div>
-                <p class="step-label">Manual step 2</p>
-                <h2>Build a contract payload</h2>
+                <p class="step-label">Step 2</p>
+                <h2>Generate and validate JSON</h2>
+              </div>
+              <div class="panel-title-actions">
+                <button class="step-collapse-button" type="button" aria-expanded="true">
+                  <span class="collapse-action">Collapse</span>
+                  <span class="collapse-icon" aria-hidden="true">−</span>
+                </button>
               </div>
             </div>
 
-            <p class="muted">No provider key required. Copy this payload into any model or agent, then paste the model JSON back here.</p>
-
-            <div id="manualEditFields" class="edit-fields hidden">
-              <label class="field-label" for="currentJsonInput">Existing JSON to edit</label>
-              <textarea id="currentJsonInput" class="text-area json-area" spellcheck="false" placeholder='{"status":"open","limit":50}'></textarea>
-            </div>
-
-            <label id="sourceInputLabel" class="field-label" for="sourceInput">Input to convert</label>
-            <textarea id="sourceInput" class="text-area" spellcheck="false" placeholder="Example: Urgent, users cannot log in after SSO update."></textarea>
-
-            <label class="field-label stacked-label" for="contextInput">Extra context JSON optional</label>
-            <textarea id="contextInput" class="text-area context-area" spellcheck="false" placeholder='{"current_datetime":"2026-05-03T00:00:00Z","email":"JohnnyAppleseed@gmail.com"}'></textarea>
-            <p class="muted small-copy">Use this for system variables. Context is included in the contract payload but final JSON still must match the selected schema.</p>
-
-            <div class="button-row">
-              <button id="buildContract" type="button">Get JSON contract</button>
-              <button id="copyJsonContract" class="secondary-button" type="button" disabled>Copy payload</button>
-            </div>
-
-            <div id="jsonContractStatus" class="status hidden" role="status"></div>
-            <pre id="jsonContractPayload" class="code-block placeholder">The MCP-style get_json_contract or get_edit_contract payload will appear here.</pre>
-          </section>
-
-          <section class="panel">
-            <div class="panel-title-row">
-              <div>
-                <p class="step-label">Manual step 3</p>
-                <h2>Paste model JSON and validate it</h2>
+            <div class="step-body">
+              <div id="llmEditFields" class="edit-fields hidden">
+                <label class="field-label" for="llmCurrentJsonInput">Existing JSON to edit</label>
+                <textarea id="llmCurrentJsonInput" class="text-area json-area" spellcheck="false" placeholder='{"status":"open","limit":50}'></textarea>
               </div>
-            </div>
 
-            <label class="field-label" for="jsonOutput">Model or agent JSON</label>
-            <textarea id="jsonOutput" class="text-area json-area" spellcheck="false" placeholder='{"summary":"Users cannot log in","severity":"critical","category":"authentication"}'></textarea>
+              <label id="llmSourceInputLabel" class="field-label" for="llmSourceInput">Input to convert</label>
+              <textarea id="llmSourceInput" class="text-area" spellcheck="false" placeholder="Example: Urgent, users cannot log in after SSO update."></textarea>
 
-            <div class="button-row">
-              <button id="validateJson" type="button">Validate JSON</button>
-            </div>
-
-            <div id="validationStatus" class="status hidden" role="status"></div>
-            <ul id="validationErrors" class="error-list"></ul>
-            <pre id="validationPayload" class="code-block placeholder">Validation results will appear here.</pre>
-          </section>
-
-          <section class="panel">
-            <div class="panel-title-row">
-              <div>
-                <p class="step-label">Manual step 4</p>
-                <h2>Get a repair contract when validation fails</h2>
+              <div class="context-toolbox" data-context-target="llmContextInput">
+                <div class="context-toolbox-header">
+                  <div>
+                    <label class="field-label" for="llmContextInput">App context optional</label>
+                    <p class="muted small-copy">Add generic values your app might already know, like current time, user, IDs, or timestamps.</p>
+                  </div>
+                  <div class="context-toolbox-actions">
+                    <button class="secondary-button context-toolbox-action" type="button" data-context-action="pretty">Pretty format</button>
+                    <button class="secondary-button context-toolbox-action" type="button" data-context-action="clear">Clear context</button>
+                  </div>
+                </div>
+                <div class="context-chip-grid" aria-label="Context presets">
+                  <button class="context-chip" type="button" data-context-preset="current-datetime">+ Current date/time</button>
+                  <button class="context-chip" type="button" data-context-preset="created-at">+ Created at</button>
+                  <button class="context-chip" type="button" data-context-preset="updated-at">+ Updated at</button>
+                  <button class="context-chip" type="button" data-context-preset="unique-id">+ Unique ID</button>
+                  <button class="context-chip" type="button" data-context-preset="user">+ User</button>
+                  <button class="context-chip" type="button" data-context-preset="session">+ Session</button>
+                  <button class="context-chip" type="button" data-context-preset="workspace">+ Workspace</button>
+                </div>
               </div>
+              <textarea id="llmContextInput" class="text-area context-area" spellcheck="false" placeholder='{"current_datetime":"2026-05-04T10:30:00.000Z","user":{"id":"user_123"}}'></textarea>
+              <p class="muted small-copy">Context is sent to the selected provider. Do not include secrets unless the provider should receive them.</p>
+
+              <div class="button-row generate-row">
+                <button id="llmGenerate" type="button" disabled>Generate JSON</button>
+                <div id="llmOutputStatus" class="status inline-status hidden" role="status"></div>
+              </div>
+
+              <label class="field-label" for="llmJsonOutput">Generated JSON</label>
+              <textarea id="llmJsonOutput" class="text-area json-area" spellcheck="false" placeholder="Generated JSON will appear here after you click Generate JSON."></textarea>
+
+              <div class="button-row">
+                <button id="llmValidate" type="button" disabled>Validate</button>
+                <button id="llmRepair" class="secondary-button" type="button" disabled>Repair with same provider</button>
+                <button id="llmCopyJson" class="secondary-button" type="button" disabled>Copy JSON</button>
+              </div>
+
+              <ul id="llmValidationErrors" class="error-list"></ul>
+              <pre id="llmPayload" class="code-block placeholder">Provider result, validation details, and edit diff when applicable will appear here.</pre>
             </div>
-
-            <p class="muted">Give this repair payload back to your chosen model, then validate the repaired JSON.</p>
-
-            <div class="button-row">
-              <button id="buildRepair" type="button" disabled>Get repair contract</button>
-              <button id="copyRepair" class="secondary-button" type="button" disabled>Copy repair payload</button>
-            </div>
-
-            <div id="repairStatus" class="status hidden" role="status"></div>
-            <pre id="repairPayload" class="code-block placeholder">Repair payloads will appear here after a failed validation.</pre>
           </section>
         </section>
 
-        <section id="llmModePanel" class="mode-panel">
-          <section class="panel collapsible-panel">
-            <details id="llmConfigDetails" open>
-              <summary class="panel-summary">
-                <div>
-                  <p class="step-label">LLM step 2</p>
-                  <h2>Enter provider key and model</h2>
-                </div>
-                <span class="summary-hint">Click to collapse</span>
-              </summary>
-
-              <div class="collapsible-body">
-                <p class="muted">Keys are sent only to this local Studio server for the current request. They are saved only if you tick <strong>Save config</strong>, which writes to your local <code>.env</code>.</p>
-
-            <div class="form-grid">
-              <div>
-                <label class="field-label" for="llmProvider">Provider</label>
-                <select id="llmProvider"></select>
-              </div>
-              <div>
-                <label class="field-label" for="llmModel">Model</label>
-                <input id="llmModel" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="gpt-4.1-mini" />
-              </div>
-              <div>
-                <label class="field-label" for="llmThinking">Thinking</label>
-                <select id="llmThinking">
-                  <option value="off">off</option>
-                  <option value="low">low</option>
-                  <option value="medium" selected>medium</option>
-                  <option value="high">high</option>
-                  <option value="xhigh">xhigh</option>
-                  <option value="auto">auto/omit</option>
-                </select>
-              </div>
-              <div>
-                <label class="field-label" for="llmApiKey">API key</label>
-                <input id="llmApiKey" class="text-input" type="password" autocomplete="off" spellcheck="false" placeholder="Paste key for this request" />
-              </div>
-            </div>
-
-            <details class="advanced-settings">
-              <summary>Advanced provider settings</summary>
-              <label class="field-label" for="llmBaseUrl">Base URL override</label>
-              <input id="llmBaseUrl" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="Leave blank to use the provider default" />
-              <p class="muted small-copy">Leave this blank for built-in cloud providers. Only fill it for Custom OpenAI-compatible providers or if your provider gives you a different endpoint.</p>
-              <p class="muted small-copy">OpenAI-compatible providers use <code>/chat/completions</code>. Ollama uses <code>/api/chat</code>. Anthropic uses <code>/v1/messages</code>.</p>
-            </details>
-
-            <div class="save-options" aria-label="Optional local config saving">
-              <label class="checkbox-field" for="llmSaveConfig">
-                <input id="llmSaveConfig" type="checkbox" />
-                <span>Save config to local <code>.env</code></span>
-              </label>
-              <label class="checkbox-field" for="llmSaveAsDefault">
-                <input id="llmSaveAsDefault" type="checkbox" />
-                <span>Save as default provider/model</span>
-              </label>
-              <p class="muted small-copy">Leave unchecked to avoid writing anything. When enabled, the current provider settings are saved immediately and again before generate/repair. API keys are saved to provider-specific env vars such as <code>OPENAI_API_KEY</code>; custom providers use <code>LLM_API_KEY</code>.</p>
-            </div>
-
-            <div class="button-row">
-              <button id="clearApiKey" class="secondary-button" type="button">Clear key</button>
-            </div>
-
-                <div id="llmConfigStatus" class="status hidden" role="status"></div>
-              </div>
-            </details>
-          </section>
-
-          <section id="llmJsonPanel" class="panel">
-            <div class="panel-title-row">
-              <div>
-                <p class="step-label">LLM step 3</p>
-                <h2>Generate and validate JSON</h2>
-              </div>
-            </div>
-
-            <div id="llmEditFields" class="edit-fields hidden">
-              <label class="field-label" for="llmCurrentJsonInput">Existing JSON to edit</label>
-              <textarea id="llmCurrentJsonInput" class="text-area json-area" spellcheck="false" placeholder='{"status":"open","limit":50}'></textarea>
-            </div>
-
-            <label id="llmSourceInputLabel" class="field-label" for="llmSourceInput">Input to convert</label>
-            <textarea id="llmSourceInput" class="text-area" spellcheck="false" placeholder="Example: Urgent, users cannot log in after SSO update."></textarea>
-
-            <label class="field-label stacked-label" for="llmContextInput">Extra context JSON optional</label>
-            <textarea id="llmContextInput" class="text-area context-area" spellcheck="false" placeholder='{"current_datetime":"2026-05-03T00:00:00Z","email":"JohnnyAppleseed@gmail.com"}'></textarea>
-            <p class="muted small-copy">Context is sent to the selected provider in LLM API key mode. Do not include secrets unless the provider should receive them.</p>
-
-            <div class="button-row generate-row">
-              <button id="llmGenerate" type="button" disabled>Generate JSON</button>
-              <div id="llmOutputStatus" class="status inline-status hidden" role="status"></div>
-            </div>
-
-            <label class="field-label" for="llmJsonOutput">Generated JSON</label>
-            <textarea id="llmJsonOutput" class="text-area json-area" spellcheck="false" placeholder="Generated JSON will appear here after you click Generate JSON."></textarea>
-
-            <div class="button-row">
-              <button id="llmValidate" type="button" disabled>Validate</button>
-              <button id="llmRepair" class="secondary-button" type="button" disabled>Repair with same provider</button>
-              <button id="llmCopyJson" class="secondary-button" type="button" disabled>Copy JSON</button>
-            </div>
-
-            <ul id="llmValidationErrors" class="error-list"></ul>
-            <pre id="llmPayload" class="code-block placeholder">Provider result, validation details, and edit diff when applicable will appear here.</pre>
-          </section>
-
-          <section id="newContractPanel" class="panel hidden">
+        <section id="newContractPanel" class="mode-panel hidden">
+          <section class="panel collapsible-step" data-collapse-id="new-contract">
             <div class="panel-title-row">
               <div>
                 <p class="step-label">New contract</p>
-                <h2>Generate a contract from an app behavior</h2>
+                <h2>Create a new contract</h2>
+              </div>
+              <div class="panel-title-actions">
+                <button class="step-collapse-button" type="button" aria-expanded="true">
+                  <span class="collapse-action">Collapse</span>
+                  <span class="collapse-icon" aria-hidden="true">−</span>
+                </button>
               </div>
             </div>
 
-            <p class="muted">Describe the JSON behavior your app needs. Studio will generate a draft contract, validate it, and save it to <code>json-contracts/</code> after review.</p>
+            <div class="step-body">
+              <p class="muted">Describe the JSON behavior your app needs. Studio will generate a draft contract, validate it, and save it to the configured contract repository after review.</p>
 
-            <div class="form-grid">
-              <div>
-                <label class="field-label" for="newContractName">Contract name</label>
-                <input id="newContractName" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="churn-risk" />
+              <div class="form-grid">
+                <div>
+                  <label class="field-label" for="newContractName">Contract name</label>
+                  <input id="newContractName" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="churn-risk" />
+                </div>
+                <div>
+                  <label class="field-label" for="newContractFields">Desired output fields optional</label>
+                  <input id="newContractFields" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="intent, reason, urgency, followUpAction" />
+                </div>
               </div>
-              <div>
-                <label class="field-label" for="newContractFields">Desired output fields optional</label>
-                <input id="newContractFields" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="intent, reason, urgency, followUpAction" />
+
+              <label class="field-label stacked-label" for="newContractDescription">What should this contract do?</label>
+              <textarea id="newContractDescription" class="text-area" spellcheck="false" placeholder="Convert customer cancellation emails into structured churn-risk records for a SaaS customer success team."></textarea>
+
+              <label class="field-label stacked-label" for="newContractExampleInput">Example input optional</label>
+              <textarea id="newContractExampleInput" class="text-area" spellcheck="false" placeholder="I need to cancel before my renewal next week. The product is too expensive and we barely use it anymore."></textarea>
+
+              <div class="context-toolbox" data-context-target="newContractContext">
+                <div class="context-toolbox-header">
+                  <div>
+                    <label class="field-label" for="newContractContext">App context optional</label>
+                    <p class="muted small-copy">Add generic values your app might already know, like current time, user, IDs, or timestamps.</p>
+                  </div>
+                  <div class="context-toolbox-actions">
+                    <button class="secondary-button context-toolbox-action" type="button" data-context-action="pretty">Pretty format</button>
+                    <button class="secondary-button context-toolbox-action" type="button" data-context-action="clear">Clear context</button>
+                  </div>
+                </div>
+                <div class="context-chip-grid" aria-label="Context presets">
+                  <button class="context-chip" type="button" data-context-preset="current-datetime">+ Current date/time</button>
+                  <button class="context-chip" type="button" data-context-preset="created-at">+ Created at</button>
+                  <button class="context-chip" type="button" data-context-preset="updated-at">+ Updated at</button>
+                  <button class="context-chip" type="button" data-context-preset="unique-id">+ Unique ID</button>
+                  <button class="context-chip" type="button" data-context-preset="user">+ User</button>
+                  <button class="context-chip" type="button" data-context-preset="session">+ Session</button>
+                  <button class="context-chip" type="button" data-context-preset="workspace">+ Workspace</button>
+                </div>
               </div>
+              <textarea id="newContractContext" class="text-area context-area" spellcheck="false" placeholder='{"current_datetime":"2026-05-04T10:30:00.000Z","workspace":{"id":"workspace_123"}}'></textarea>
+
+              <div class="button-row generate-row">
+                <button id="generateContractDraft" type="button" disabled>Generate contract</button>
+                <div id="contractDraftStatus" class="status inline-status hidden" role="status"></div>
+              </div>
+
+              <label class="field-label" for="contractDraftJson">Generated contract draft</label>
+              <textarea id="contractDraftJson" class="text-area json-area" spellcheck="false" placeholder="Generated contract JSON will appear here for review before saving."></textarea>
+
+              <div class="button-row">
+                <button id="validateContractDraft" class="secondary-button" type="button" disabled>Validate draft</button>
+                <button id="saveContractDraft" type="button" disabled>Save contract</button>
+                <label class="checkbox-field compact-checkbox" for="overwriteContractDraft">
+                  <input id="overwriteContractDraft" type="checkbox" />
+                  <span>Overwrite existing</span>
+                </label>
+              </div>
+
+              <pre id="contractDraftValidation" class="code-block placeholder">Draft validation and save results will appear here.</pre>
             </div>
-
-            <label class="field-label stacked-label" for="newContractDescription">What should this contract do?</label>
-            <textarea id="newContractDescription" class="text-area" spellcheck="false" placeholder="Convert customer cancellation emails into structured churn-risk records for a SaaS customer success team."></textarea>
-
-            <label class="field-label stacked-label" for="newContractExampleInput">Example input optional</label>
-            <textarea id="newContractExampleInput" class="text-area" spellcheck="false" placeholder="I need to cancel before my renewal next week. The product is too expensive and we barely use it anymore."></textarea>
-
-            <label class="field-label stacked-label" for="newContractContext">Extra context JSON optional</label>
-            <textarea id="newContractContext" class="text-area context-area" spellcheck="false" placeholder='{"industry":"saas","source":"support-email"}'></textarea>
-
-            <div class="button-row generate-row">
-              <button id="generateContractDraft" type="button" disabled>Generate contract</button>
-              <div id="contractDraftStatus" class="status inline-status hidden" role="status"></div>
-            </div>
-
-            <label class="field-label" for="contractDraftJson">Generated contract draft</label>
-            <textarea id="contractDraftJson" class="text-area json-area" spellcheck="false" placeholder="Generated contract JSON will appear here for review before saving."></textarea>
-
-            <div class="button-row">
-              <button id="validateContractDraft" class="secondary-button" type="button" disabled>Validate draft</button>
-              <button id="saveContractDraft" type="button" disabled>Save contract</button>
-              <label class="checkbox-field compact-checkbox" for="overwriteContractDraft">
-                <input id="overwriteContractDraft" type="checkbox" />
-                <span>Overwrite existing</span>
-              </label>
-            </div>
-
-            <pre id="contractDraftValidation" class="code-block placeholder">Draft validation and save results will appear here.</pre>
           </section>
         </section>
       </section>

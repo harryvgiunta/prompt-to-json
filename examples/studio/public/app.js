@@ -1,41 +1,29 @@
 const elements = {
+  studioShell: document.querySelector("#studioShell"),
+  configSidebar: document.querySelector("#configSidebar"),
+  toggleConfigSidebar: document.querySelector("#toggleConfigSidebar"),
   modeTabs: [...document.querySelectorAll(".tab-button")],
   operationTabs: document.querySelector("#operationTabs"),
   operationButtons: [...document.querySelectorAll(".operation-button")],
-  manualModePanel: document.querySelector("#manualModePanel"),
+  stepCollapseButtons: [...document.querySelectorAll(".step-collapse-button")],
+  contextToolboxButtons: [...document.querySelectorAll("[data-context-preset], [data-context-action]")],
   llmModePanel: document.querySelector("#llmModePanel"),
   llmJsonPanel: document.querySelector("#llmJsonPanel"),
   newContractPanel: document.querySelector("#newContractPanel"),
+  contractPanel: document.querySelector("#contractPanel"),
   contractSelect: document.querySelector("#contractSelect"),
   contractsDirInput: document.querySelector("#contractsDirInput"),
   applyContractsDir: document.querySelector("#applyContractsDir"),
   contractsDirStatus: document.querySelector("#contractsDirStatus"),
   reloadContracts: document.querySelector("#reloadContracts"),
   contractDescription: document.querySelector("#contractDescription"),
+  contractStatus: document.querySelector("#contractStatus"),
   rulesList: document.querySelector("#rulesList"),
   schemaPreview: document.querySelector("#schemaPreview"),
   examplesPreview: document.querySelector("#examplesPreview"),
-  sourceInputLabel: document.querySelector("#sourceInputLabel"),
-  sourceInput: document.querySelector("#sourceInput"),
-  currentJsonInput: document.querySelector("#currentJsonInput"),
-  manualEditFields: document.querySelector("#manualEditFields"),
-  contextInput: document.querySelector("#contextInput"),
-  jsonOutput: document.querySelector("#jsonOutput"),
   useExampleInput: document.querySelector("#useExampleInput"),
   useExampleOutput: document.querySelector("#useExampleOutput"),
   useInvalidExample: document.querySelector("#useInvalidExample"),
-  buildContract: document.querySelector("#buildContract"),
-  copyJsonContract: document.querySelector("#copyJsonContract"),
-  jsonContractStatus: document.querySelector("#jsonContractStatus"),
-  jsonContractPayload: document.querySelector("#jsonContractPayload"),
-  validateJson: document.querySelector("#validateJson"),
-  validationStatus: document.querySelector("#validationStatus"),
-  validationErrors: document.querySelector("#validationErrors"),
-  validationPayload: document.querySelector("#validationPayload"),
-  buildRepair: document.querySelector("#buildRepair"),
-  copyRepair: document.querySelector("#copyRepair"),
-  repairStatus: document.querySelector("#repairStatus"),
-  repairPayload: document.querySelector("#repairPayload"),
   llmProvider: document.querySelector("#llmProvider"),
   llmModel: document.querySelector("#llmModel"),
   llmThinking: document.querySelector("#llmThinking"),
@@ -80,9 +68,7 @@ const state = {
   currentContract: null,
   llmConfig: null,
   providers: [],
-  lastJsonContract: null,
-  lastValidation: null,
-  lastRepairContract: null,
+  configSidebarOpen: true,
   lastLlmValidation: null,
   lastLlmResult: null,
   lastContractDraftValidation: null
@@ -90,12 +76,28 @@ const state = {
 
 const progressTimers = new WeakMap();
 
+restoreConfigSidebarState();
 wireEvents();
 await loadLlmProviders();
 await loadContractsDirConfig();
 await loadContracts();
 
 function wireEvents() {
+  elements.toggleConfigSidebar.addEventListener("click", () => {
+    state.configSidebarOpen = !state.configSidebarOpen;
+    saveConfigSidebarPreference();
+    applyConfigSidebarState();
+  });
+
+  for (const button of elements.stepCollapseButtons) {
+    button.addEventListener("click", () => toggleStepPanel(button));
+  }
+  initializeStepCollapseState();
+
+  for (const button of elements.contextToolboxButtons) {
+    button.addEventListener("click", () => handleContextToolboxButton(button));
+  }
+
   for (const tab of elements.modeTabs) {
     tab.addEventListener("click", () => switchMode(tab.dataset.mode));
   }
@@ -118,59 +120,36 @@ function wireEvents() {
 
   elements.useExampleInput.addEventListener("click", () => {
     const example = state.operation === "edit" ? firstEditExample() : firstExample();
-    if (!example) return toast("No example input for this contract.");
+    if (!example || example.input === undefined) return toast("No example input for this contract.");
+
     const text = formatInputValue(example.input);
-    elements.sourceInput.value = text;
-    if (!elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
+    elements.llmSourceInput.value = text;
+
     if (state.operation === "edit" && example.currentJson !== undefined) {
-      const json = pretty(example.currentJson);
-      elements.currentJsonInput.value = json;
-      if (!elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
+      elements.llmCurrentJsonInput.value = pretty(example.currentJson);
     }
+
+    clearLlmValidationState();
     updateButtonState();
   });
 
   elements.useExampleOutput.addEventListener("click", () => {
-    const example = firstExample();
-    if (!example || example.output === undefined) return toast("No example JSON for this contract.");
-    const json = pretty(example.output);
-    elements.jsonOutput.value = json;
-    elements.currentJsonInput.value = json;
+    const example = state.operation === "edit" ? firstEditExample() ?? firstExample() : firstExample();
+    const value = example?.output ?? example?.currentJson;
+    if (value === undefined) return toast("No example JSON for this contract.");
+
+    const json = pretty(value);
+    elements.llmJsonOutput.value = json;
     elements.llmCurrentJsonInput.value = json;
-    clearValidationState();
-    clearRepairState();
     clearLlmValidationState();
   });
 
   elements.useInvalidExample.addEventListener("click", () => {
     const json = pretty(makeInvalidExample());
-    elements.jsonOutput.value = json;
-    elements.currentJsonInput.value = json;
+    elements.llmJsonOutput.value = json;
     elements.llmCurrentJsonInput.value = json;
-    clearValidationState();
-    clearRepairState();
     clearLlmValidationState();
     toast("Inserted an intentionally invalid JSON sample.");
-  });
-
-  elements.buildContract.addEventListener("click", async () => {
-    await buildJsonContract();
-  });
-
-  elements.copyJsonContract.addEventListener("click", async () => {
-    if (state.lastJsonContract) await copyText(pretty(state.lastJsonContract), "Copied JSON contract payload.");
-  });
-
-  elements.validateJson.addEventListener("click", async () => {
-    await validateManualJson();
-  });
-
-  elements.buildRepair.addEventListener("click", async () => {
-    await buildRepairContract();
-  });
-
-  elements.copyRepair.addEventListener("click", async () => {
-    if (state.lastRepairContract) await copyText(pretty(state.lastRepairContract), "Copied repair payload.");
   });
 
   elements.llmProvider.addEventListener("change", () => {
@@ -189,23 +168,28 @@ function wireEvents() {
   }
 
   for (const input of [
-    elements.sourceInput,
-    elements.currentJsonInput,
     elements.llmSourceInput,
     elements.llmCurrentJsonInput,
-    elements.llmJsonOutput,
+    elements.llmContextInput,
     elements.newContractName,
     elements.newContractFields,
     elements.newContractDescription,
     elements.newContractExampleInput,
-    elements.newContractContext,
-    elements.contractDraftJson
+    elements.newContractContext
   ]) {
     input.addEventListener("input", () => {
       renderLlmConfigStatus();
       updateButtonState();
     });
   }
+
+  elements.llmJsonOutput.addEventListener("input", () => {
+    state.lastLlmValidation = null;
+    state.lastLlmResult = null;
+    elements.llmValidationErrors.innerHTML = "";
+    hideStatus(elements.llmOutputStatus);
+    updateButtonState();
+  });
 
   elements.contractDraftJson.addEventListener("input", () => {
     state.lastContractDraftValidation = null;
@@ -263,6 +247,202 @@ function wireEvents() {
   });
 }
 
+function restoreConfigSidebarState() {
+  try {
+    state.configSidebarOpen = localStorage.getItem("prompt-to-json.studio.configSidebarOpen") !== "false";
+  } catch {
+    state.configSidebarOpen = true;
+  }
+
+  applyConfigSidebarState();
+}
+
+function saveConfigSidebarPreference() {
+  try {
+    localStorage.setItem("prompt-to-json.studio.configSidebarOpen", String(state.configSidebarOpen));
+  } catch {
+    // Ignore storage errors; the toggle should still work for this session.
+  }
+}
+
+function applyConfigSidebarState() {
+  const isOpen = state.configSidebarOpen;
+  document.body.classList.toggle("config-sidebar-collapsed", !isOpen);
+  elements.studioShell.classList.toggle("sidebar-collapsed", !isOpen);
+  elements.configSidebar.classList.toggle("closed", !isOpen);
+  elements.toggleConfigSidebar.textContent = isOpen ? "‹" : "›";
+  elements.toggleConfigSidebar.setAttribute("aria-expanded", String(isOpen));
+  elements.toggleConfigSidebar.setAttribute("aria-label", isOpen ? "Hide configuration" : "Show configuration");
+  elements.toggleConfigSidebar.title = isOpen ? "Hide configuration" : "Show configuration";
+}
+
+function initializeStepCollapseState() {
+  for (const button of elements.stepCollapseButtons) {
+    const panel = button.closest(".collapsible-step");
+    if (!panel) continue;
+
+    let collapsed = false;
+    try {
+      collapsed = localStorage.getItem(stepPanelStorageKey(panel)) === "true";
+    } catch {
+      collapsed = false;
+    }
+
+    setStepCollapsed(panel, collapsed, { save: false });
+  }
+}
+
+function toggleStepPanel(button) {
+  const panel = button.closest(".collapsible-step");
+  if (!panel) return;
+  setStepCollapsed(panel, !panel.classList.contains("collapsed"));
+}
+
+function setStepCollapsed(panel, collapsed, options = {}) {
+  panel.classList.toggle("collapsed", collapsed);
+
+  const button = panel.querySelector(".step-collapse-button");
+  const action = button?.querySelector(".collapse-action");
+  const icon = button?.querySelector(".collapse-icon");
+
+  if (button) {
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.title = collapsed ? "Expand this step" : "Collapse this step";
+    button.setAttribute("aria-label", collapsed ? "Expand this step" : "Collapse this step");
+  }
+  if (action) action.textContent = collapsed ? "Expand" : "Collapse";
+  if (icon) icon.textContent = collapsed ? "+" : "−";
+
+  if (options.save !== false) {
+    try {
+      localStorage.setItem(stepPanelStorageKey(panel), String(collapsed));
+    } catch {
+      // Ignore storage errors; the step still collapses for this session.
+    }
+  }
+}
+
+function stepPanelStorageKey(panel) {
+  return `prompt-to-json.studio.${panel.dataset.collapseId || "step"}.collapsed`;
+}
+
+function handleContextToolboxButton(button) {
+  const toolbox = button.closest(".context-toolbox");
+  const targetId = toolbox?.dataset.contextTarget;
+  const textarea = targetId ? document.getElementById(targetId) : null;
+  if (!textarea) return;
+
+  if (button.dataset.contextPreset) {
+    addContextPreset(textarea, button.dataset.contextPreset, button.textContent.replace(/^\+\s*/, "").trim());
+    return;
+  }
+
+  if (button.dataset.contextAction === "pretty") {
+    prettyFormatContext(textarea);
+    return;
+  }
+
+  if (button.dataset.contextAction === "clear") {
+    textarea.value = "";
+    notifyContextChanged(textarea);
+    toast("Cleared context JSON.");
+  }
+}
+
+function addContextPreset(textarea, presetId, label) {
+  const existing = parseContextFromTextarea(textarea.value);
+  if (!existing.ok) return toast(existing.error);
+
+  const preset = buildContextPreset(presetId);
+  if (!preset) return toast("Unknown context preset.");
+
+  textarea.value = pretty({
+    ...existing.value,
+    ...preset
+  });
+  notifyContextChanged(textarea);
+  toast(`Added ${label} context.`);
+}
+
+function prettyFormatContext(textarea) {
+  if (!textarea.value.trim()) return toast("No context JSON to format.");
+
+  const parsed = parseContextFromTextarea(textarea.value);
+  if (!parsed.ok) return toast(parsed.error);
+
+  textarea.value = pretty(parsed.value);
+  notifyContextChanged(textarea);
+  toast("Formatted context JSON.");
+}
+
+function buildContextPreset(presetId) {
+  const now = new Date();
+  const iso = now.toISOString();
+  const locale = navigator.language || "en-US";
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+  switch (presetId) {
+    case "current-datetime":
+      return {
+        current_datetime: iso,
+        current_date: iso.slice(0, 10),
+        timezone,
+        locale
+      };
+    case "created-at":
+      return { created_at: iso };
+    case "updated-at":
+      return { updated_at: iso };
+    case "unique-id":
+      return { unique_id: randomUuid() };
+    case "user":
+      return {
+        user: {
+          id: "user_123",
+          email: "user@example.com",
+          name: "Jane Doe",
+          role: "member"
+        }
+      };
+    case "session":
+      return {
+        session: {
+          id: shortContextId("session"),
+          source: "web",
+          locale,
+          timezone
+        }
+      };
+    case "workspace":
+      return {
+        workspace: {
+          id: "workspace_123",
+          name: "Demo Workspace"
+        }
+      };
+    default:
+      return null;
+  }
+}
+
+function notifyContextChanged(textarea) {
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function shortContextId(prefix) {
+  return `${prefix}_${randomUuid().replace(/-/g, "").slice(0, 16)}`;
+}
+
+function randomUuid() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 function switchMode(mode) {
   if (!mode || mode === state.mode) return;
   state.mode = mode;
@@ -272,35 +452,10 @@ function switchMode(mode) {
   }
 
   const isContractMode = mode === "contract";
-  elements.manualModePanel.classList.toggle("hidden", mode !== "manual");
-  elements.llmModePanel.classList.toggle("hidden", mode === "manual");
-  elements.llmJsonPanel.classList.toggle("hidden", mode !== "llm");
+  elements.contractPanel.classList.toggle("hidden", isContractMode);
+  elements.llmModePanel.classList.toggle("hidden", isContractMode);
   elements.newContractPanel.classList.toggle("hidden", !isContractMode);
   elements.operationTabs.classList.toggle("hidden", isContractMode);
-
-  if (mode === "llm" && !elements.llmSourceInput.value.trim() && elements.sourceInput.value.trim()) {
-    elements.llmSourceInput.value = elements.sourceInput.value.trim();
-  }
-
-  if (mode === "llm" && !elements.llmCurrentJsonInput.value.trim() && elements.currentJsonInput.value.trim()) {
-    elements.llmCurrentJsonInput.value = elements.currentJsonInput.value.trim();
-  }
-
-  if (mode === "llm" && !elements.llmContextInput.value.trim() && elements.contextInput.value.trim()) {
-    elements.llmContextInput.value = elements.contextInput.value.trim();
-  }
-
-  if (mode === "manual" && !elements.sourceInput.value.trim() && elements.llmSourceInput.value.trim()) {
-    elements.sourceInput.value = elements.llmSourceInput.value.trim();
-  }
-
-  if (mode === "manual" && !elements.currentJsonInput.value.trim() && elements.llmCurrentJsonInput.value.trim()) {
-    elements.currentJsonInput.value = elements.llmCurrentJsonInput.value.trim();
-  }
-
-  if (mode === "manual" && !elements.contextInput.value.trim() && elements.llmContextInput.value.trim()) {
-    elements.contextInput.value = elements.llmContextInput.value.trim();
-  }
 
   updateButtonState();
 }
@@ -311,19 +466,14 @@ function switchOperation(operation) {
 
   if (operation === "edit") {
     const editExample = firstEditExample();
-    if (editExample?.currentJson !== undefined) {
-      const json = pretty(editExample.currentJson);
-      if (!elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
-      if (!elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
+    if (editExample?.currentJson !== undefined && !elements.llmCurrentJsonInput.value.trim()) {
+      elements.llmCurrentJsonInput.value = pretty(editExample.currentJson);
     }
-    if (editExample?.input !== undefined) {
-      const text = formatInputValue(editExample.input);
-      if (!elements.sourceInput.value.trim()) elements.sourceInput.value = text;
-      if (!elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
+    if (editExample?.input !== undefined && !elements.llmSourceInput.value.trim()) {
+      elements.llmSourceInput.value = formatInputValue(editExample.input);
     }
   }
 
-  clearContractPayloadState();
   clearLlmValidationState();
   updateOperationUi();
   updateButtonState();
@@ -333,6 +483,7 @@ function updateOperationUi() {
   if (state.operation === "edit" && !editOperationEnabled()) {
     state.operation = "create";
   }
+
   const isEdit = state.operation === "edit";
 
   for (const button of elements.operationButtons) {
@@ -340,15 +491,10 @@ function updateOperationUi() {
     button.disabled = button.dataset.operation === "edit" && !editOperationEnabled();
   }
 
-  elements.manualEditFields.classList.toggle("hidden", !isEdit);
   elements.llmEditFields.classList.toggle("hidden", !isEdit);
-  elements.sourceInputLabel.textContent = isEdit ? "Requested change" : "Input to convert";
   elements.llmSourceInputLabel.textContent = isEdit ? "Requested change" : "Input to convert";
-  elements.sourceInput.placeholder = isEdit ? "Example: we want the last 20 closed tickets" : "Example: Urgent, users cannot log in after SSO update.";
-  elements.llmSourceInput.placeholder = elements.sourceInput.placeholder;
-  elements.currentJsonInput.placeholder = '{"status":"open","limit":50}';
-  elements.llmCurrentJsonInput.placeholder = elements.currentJsonInput.placeholder;
-  elements.buildContract.textContent = isEdit ? "Get edit contract" : "Get JSON contract";
+  elements.llmSourceInput.placeholder = isEdit ? "Example: we want the last 20 closed tickets" : "Example: Urgent, users cannot log in after SSO update.";
+  elements.llmCurrentJsonInput.placeholder = '{"status":"open","limit":50}';
   elements.llmGenerate.textContent = isEdit ? "Generate edited JSON" : "Generate JSON";
 }
 
@@ -471,7 +617,7 @@ function renderLlmConfigStatus() {
   const baseUrlText = elements.llmBaseUrl.value.trim()
     ? `Base URL override: ${elements.llmBaseUrl.value.trim()}.`
     : provider.defaultBaseUrl
-      ? `Base URL: provider default.`
+      ? "Base URL: provider default."
       : "Base URL: enter one in Advanced settings.";
   const saveText = elements.llmSaveConfig.checked
     ? elements.llmSaveAsDefault.checked
@@ -488,7 +634,7 @@ function renderLlmConfigStatus() {
 
 async function loadContracts(options = {}) {
   const { forceExampleValues = false } = options;
-  setStatus(elements.jsonContractStatus, "info", "Loading contracts…");
+  setStatus(elements.contractStatus, "info", "Loading contracts…");
 
   try {
     const result = await api("/api/contracts");
@@ -497,29 +643,29 @@ async function loadContracts(options = {}) {
 
     if (state.contracts.length === 0) {
       state.currentContract = null;
-      elements.contractDescription.textContent = "No contracts loaded. Add .json files to json-contracts/ and click Reload.";
-      setStatus(elements.jsonContractStatus, "bad", "No contracts are available.");
+      elements.contractDescription.textContent = "No contracts loaded. Add .json files to the configured repository and click Reload.";
+      setStatus(elements.contractStatus, "bad", "No contracts are available.");
       updateButtonState();
       return;
     }
 
     const selected = elements.contractSelect.value || state.contracts[0].name;
     await loadContractDetails(selected, { forceExampleValues });
-    hideStatus(elements.jsonContractStatus);
+    hideStatus(elements.contractStatus);
   } catch (error) {
-    setStatus(elements.jsonContractStatus, "bad", messageFor(error));
+    setStatus(elements.contractStatus, "bad", messageFor(error));
   }
 }
 
 async function reloadContracts() {
-  setStatus(elements.jsonContractStatus, "info", "Reloading contracts from disk…");
+  setStatus(elements.contractStatus, "info", "Reloading contracts from disk…");
 
   try {
     await api("/api/reload", { method: "POST", body: {} });
     await loadContracts({ forceExampleValues: true });
     toast("Contracts reloaded. Example fields refreshed.");
   } catch (error) {
-    setStatus(elements.jsonContractStatus, "bad", messageFor(error));
+    setStatus(elements.contractStatus, "bad", messageFor(error));
   }
 }
 
@@ -552,9 +698,6 @@ async function loadContractDetails(contractName, options = {}) {
       forceExampleValues,
       prefillExamples: !clearWorkspace
     });
-    clearContractPayloadState();
-    clearValidationState();
-    clearRepairState();
     clearLlmValidationState();
   } catch (error) {
     elements.contractDescription.textContent = messageFor(error);
@@ -589,142 +732,27 @@ function renderContractDetails(contract, options = {}) {
     const example = firstExample();
     if (example?.input !== undefined) {
       const text = formatInputValue(example.input);
-      if (forceExampleValues || !elements.sourceInput.value.trim()) elements.sourceInput.value = text;
       if (forceExampleValues || !elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
     }
 
     if (example?.output !== undefined) {
       const json = pretty(example.output);
-      if (forceExampleValues || !elements.jsonOutput.value.trim()) elements.jsonOutput.value = json;
-      if (forceExampleValues || !elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
       if (forceExampleValues || !elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
     }
 
     const editExample = firstEditExample();
     if (editExample?.currentJson !== undefined) {
       const json = pretty(editExample.currentJson);
-      if (forceExampleValues || !elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
       if (forceExampleValues || !elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
     }
     if (editExample?.input !== undefined && state.operation === "edit") {
       const text = formatInputValue(editExample.input);
-      if (forceExampleValues || !elements.sourceInput.value.trim()) elements.sourceInput.value = text;
       if (forceExampleValues || !elements.llmSourceInput.value.trim()) elements.llmSourceInput.value = text;
     }
   }
 
   updateOperationUi();
   updateButtonState();
-}
-
-async function buildJsonContract() {
-  const contract = selectedContractName();
-  const input = elements.sourceInput.value.trim();
-
-  if (!contract) return setStatus(elements.jsonContractStatus, "bad", "Select a contract first.");
-  if (!input) return setStatus(elements.jsonContractStatus, "bad", state.operation === "edit" ? "Describe the requested change first." : "Paste a natural-language input first.");
-
-  const context = parseContextFromTextarea(elements.contextInput.value);
-  if (!context.ok) return setStatus(elements.jsonContractStatus, "bad", context.error);
-
-  const body = {
-    contract,
-    input,
-    context: withStudioContext(context.value, {
-      mode: state.operation === "edit" ? "manual-edit" : "manual",
-      note: state.operation === "edit"
-        ? "Give this edit payload to your chosen model. Paste the complete edited JSON result back into the Studio for validation."
-        : "Give this payload to your chosen model. Paste the JSON result back into the Studio for validation."
-    })
-  };
-  let endpoint = "/api/json-contract";
-
-  if (state.operation === "edit") {
-    const currentJson = parseJsonFromTextarea(elements.currentJsonInput.value);
-    if (!currentJson.ok) return setStatus(elements.jsonContractStatus, "bad", `Existing JSON: ${currentJson.error}`);
-    body.currentJson = currentJson.value;
-    endpoint = "/api/edit-contract";
-  }
-
-  setStatus(elements.jsonContractStatus, "info", state.operation === "edit" ? "Calling get_edit_contract…" : "Calling get_json_contract…");
-
-  try {
-    const payload = await api(endpoint, {
-      method: "POST",
-      body
-    });
-
-    state.lastJsonContract = payload;
-    elements.jsonContractPayload.classList.remove("placeholder");
-    elements.jsonContractPayload.textContent = pretty(payload);
-    setStatus(elements.jsonContractStatus, "good", state.operation === "edit" ? "Edit payload ready. Copy it into any model or agent." : "Contract payload ready. Copy it into any model or agent.");
-    updateButtonState();
-  } catch (error) {
-    setStatus(elements.jsonContractStatus, "bad", messageFor(error));
-  }
-}
-
-async function validateManualJson() {
-  const contract = selectedContractName();
-  if (!contract) return setStatus(elements.validationStatus, "bad", "Select a contract first.");
-
-  const parsed = parseJsonFromTextarea(elements.jsonOutput.value);
-  if (!parsed.ok) {
-    clearValidationState(false);
-    return setStatus(elements.validationStatus, "bad", parsed.error);
-  }
-
-  setStatus(elements.validationStatus, "info", "Calling validate_json…");
-
-  try {
-    const result = await validateContractJson(contract, parsed.value);
-    state.lastValidation = result;
-    elements.validationPayload.classList.remove("placeholder");
-    elements.validationPayload.textContent = pretty(result);
-    renderValidationErrors(elements.validationErrors, result.errors ?? []);
-
-    if (result.valid) {
-      setStatus(elements.validationStatus, "good", "Valid JSON. This object matches the contract.");
-      clearRepairState();
-    } else {
-      resetRepairPayload();
-      setStatus(elements.validationStatus, "bad", "Invalid JSON. Get a repair contract next.");
-    }
-
-    updateButtonState();
-  } catch (error) {
-    setStatus(elements.validationStatus, "bad", messageFor(error));
-  }
-}
-
-async function buildRepairContract() {
-  const contract = selectedContractName();
-  if (!contract) return setStatus(elements.repairStatus, "bad", "Select a contract first.");
-
-  const parsed = parseJsonFromTextarea(elements.jsonOutput.value);
-  if (!parsed.ok) return setStatus(elements.repairStatus, "bad", parsed.error);
-
-  const validationErrors = state.lastValidation?.valid === false ? state.lastValidation.errors : [];
-  setStatus(elements.repairStatus, "info", "Calling get_repair_contract…");
-
-  try {
-    const payload = await api("/api/repair-contract", {
-      method: "POST",
-      body: {
-        contract,
-        invalidJson: parsed.value,
-        validationErrors
-      }
-    });
-
-    state.lastRepairContract = payload;
-    elements.repairPayload.classList.remove("placeholder");
-    elements.repairPayload.textContent = pretty(payload);
-    setStatus(elements.repairStatus, "good", "Repair payload ready. Give it back to your model, then validate again.");
-    updateButtonState();
-  } catch (error) {
-    setStatus(elements.repairStatus, "bad", messageFor(error));
-  }
 }
 
 async function generateWithLlm() {
@@ -985,7 +1013,6 @@ function renderLlmResult(result, successPrefix) {
 
   if (result.json !== undefined) {
     elements.llmJsonOutput.value = pretty(result.json);
-    elements.jsonOutput.value = pretty(result.json);
   } else if (result.rawText) {
     elements.llmJsonOutput.value = result.rawText.trim();
   }
@@ -1084,44 +1111,6 @@ function renderValidationErrors(element, errors) {
   }
 }
 
-function clearContractPayloadState() {
-  state.lastJsonContract = null;
-  elements.jsonContractPayload.classList.add("placeholder");
-  elements.jsonContractPayload.textContent = state.operation === "edit"
-    ? "The MCP-style get_edit_contract payload will appear here."
-    : "The MCP-style get_json_contract payload will appear here.";
-  hideStatus(elements.jsonContractStatus);
-  updateButtonState();
-}
-
-function clearValidationState(resetPayload = true) {
-  state.lastValidation = null;
-  elements.validationErrors.innerHTML = "";
-  hideStatus(elements.validationStatus);
-
-  if (resetPayload) {
-    elements.validationPayload.classList.add("placeholder");
-    elements.validationPayload.textContent = "Validation results will appear here.";
-  }
-
-  updateButtonState();
-}
-
-function clearRepairState() {
-  state.lastRepairContract = null;
-  resetRepairPayload();
-  hideStatus(elements.repairStatus);
-  updateButtonState();
-}
-
-function resetRepairPayload() {
-  state.lastRepairContract = null;
-  elements.repairPayload.classList.add("placeholder");
-  elements.repairPayload.textContent = "Repair payloads will appear here after a failed validation.";
-  elements.copyRepair.disabled = true;
-  updateButtonState();
-}
-
 function clearLlmValidationState(resetPayload = true) {
   state.lastLlmValidation = null;
   state.lastLlmResult = null;
@@ -1137,23 +1126,18 @@ function clearLlmValidationState(resetPayload = true) {
 }
 
 function clearWorkspaceFields() {
-  elements.sourceInput.value = "";
-  elements.currentJsonInput.value = "";
-  elements.contextInput.value = "";
-  elements.jsonOutput.value = "";
   elements.llmSourceInput.value = "";
   elements.llmCurrentJsonInput.value = "";
   elements.llmContextInput.value = "";
   elements.llmJsonOutput.value = "";
+  clearLlmValidationState();
 }
 
 function updateButtonState() {
   const hasContract = Boolean(state.currentContract);
   const isEdit = state.operation === "edit";
   const canUseOperation = !isEdit || editOperationEnabled();
-  const hasManualCurrentJson = !isEdit || Boolean(elements.currentJsonInput.value.trim());
   const hasLlmCurrentJson = !isEdit || Boolean(elements.llmCurrentJsonInput.value.trim());
-  const hasFailedValidation = state.lastValidation?.valid === false;
   const hasFailedLlmValidation = state.lastLlmValidation?.valid === false;
   const provider = selectedProvider();
   const providerReady = Boolean(provider && (!provider.requiresApiKey || provider.hasApiKey || elements.llmApiKey.value.trim()));
@@ -1164,14 +1148,9 @@ function updateButtonState() {
   const hasContractDraftDescription = Boolean(elements.newContractDescription.value.trim());
   const hasContractDraft = Boolean(elements.contractDraftJson.value.trim());
 
-  elements.buildContract.disabled = !hasContract || !canUseOperation || !hasManualCurrentJson;
-  elements.validateJson.disabled = !hasContract;
   elements.useExampleInput.disabled = !hasContract;
   elements.useExampleOutput.disabled = !hasContract;
   elements.useInvalidExample.disabled = !hasContract;
-  elements.copyJsonContract.disabled = !state.lastJsonContract;
-  elements.buildRepair.disabled = !hasFailedValidation;
-  elements.copyRepair.disabled = !state.lastRepairContract;
   elements.llmGenerate.disabled = !hasContract || !canUseOperation || !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasLlmInput || !hasLlmCurrentJson;
   elements.llmValidate.disabled = !hasContract || !hasLlmJson;
   elements.llmRepair.disabled = !hasContract || !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasFailedLlmValidation;
@@ -1255,18 +1234,8 @@ function parseContextFromTextarea(value) {
     }
     return { ok: true, value: parsed };
   } catch (error) {
-    return { ok: false, error: `Invalid extra context JSON: ${messageFor(error)}` };
+    return { ok: false, error: `Invalid app context JSON: ${messageFor(error)}` };
   }
-}
-
-function withStudioContext(context, studio) {
-  return {
-    ...context,
-    _studio: {
-      app: "prompt-to-json Studio",
-      ...studio
-    }
-  };
 }
 
 async function api(path, options = {}) {

@@ -10,6 +10,7 @@
   --good: #8aff8a;
   --bad: #ff6b6b;
   --info: #d7d7d7;
+  --config-sidebar-width: min(400px, calc(100vw - 3rem));
 }
 
 * {
@@ -72,9 +73,22 @@ button:disabled {
   display: flex;
   gap: 1rem;
   justify-content: space-between;
-  margin: 0 auto;
-  max-width: 1440px;
+  margin: 0;
+  max-width: none;
   padding: 1.25rem;
+  padding-left: calc(var(--config-sidebar-width) + 1.25rem);
+  transition: padding-left 160ms ease;
+}
+
+body.config-sidebar-collapsed .hero {
+  padding-left: 1.25rem;
+}
+
+.hero-copy {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0.7rem 0 0;
+  max-width: 42rem;
 }
 
 .eyebrow,
@@ -104,6 +118,13 @@ h2 {
   font-weight: 700;
 }
 
+#contractPanel h2,
+#llmJsonPanel h2 {
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
 .hero-card {
   display: flex;
   flex-wrap: wrap;
@@ -121,12 +142,16 @@ h2 {
 }
 
 .studio-shell {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: minmax(280px, 360px) 1fr;
-  margin: 0 auto;
-  max-width: 1440px;
+  display: block;
+  margin: 0;
+  max-width: none;
   padding: 1rem 1.25rem 2rem;
+  padding-left: calc(var(--config-sidebar-width) + 1.25rem);
+  transition: padding-left 160ms ease;
+}
+
+.studio-shell.sidebar-collapsed {
+  padding-left: 1.25rem;
 }
 
 .panel {
@@ -136,14 +161,62 @@ h2 {
 }
 
 .sidebar {
-  align-self: start;
-  position: sticky;
-  top: 1rem;
+  background: var(--panel);
+  border: 0;
+  border-right: 1px solid var(--border);
+  bottom: 0;
+  display: block;
+  left: 0;
+  overflow: auto;
+  padding: 1rem;
+  position: fixed;
+  top: 0;
+  transform: translateX(0);
+  transition: transform 160ms ease;
+  width: var(--config-sidebar-width);
+  z-index: 50;
+}
+
+.sidebar.closed {
+  transform: translateX(-100%);
+}
+
+.sidebar-toggle {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #fff;
+  border-left: 0;
+  color: #000;
+  display: flex;
+  font-size: 1.5rem;
+  font-weight: 800;
+  height: 4.25rem;
+  justify-content: center;
+  left: var(--config-sidebar-width);
+  line-height: 1;
+  padding: 0;
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: left 160ms ease, background 120ms ease, border-color 120ms ease;
+  width: 2rem;
+  z-index: 60;
+}
+
+.sidebar-toggle:hover:not(:disabled) {
+  background: #dcdcdc;
+  border-color: #dcdcdc;
+}
+
+.studio-shell.sidebar-collapsed .sidebar-toggle {
+  left: 0;
 }
 
 .workspace {
   display: grid;
   gap: 1rem;
+  margin: 0 auto;
+  max-width: 1120px;
 }
 
 .mode-tabs,
@@ -153,7 +226,7 @@ h2 {
 }
 
 .mode-tabs {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .operation-tabs {
@@ -195,6 +268,41 @@ h2 {
   display: grid;
   gap: 0.85rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.config-grid {
+  grid-template-columns: 1fr;
+}
+
+.intro-copy {
+  margin-top: 0;
+}
+
+.config-section {
+  border-top: 1px solid var(--border);
+  margin-top: 1rem;
+  padding-top: 0.2rem;
+}
+
+.config-section > summary {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  list-style: none;
+}
+
+.config-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.config-section > summary::after {
+  color: var(--muted);
+  content: "+";
+  font-weight: 800;
+}
+
+.config-section[open] > summary::after {
+  content: "−";
 }
 
 .collapsible-panel details {
@@ -289,6 +397,67 @@ h2 {
   margin-bottom: 1rem;
 }
 
+.panel-title-actions {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.step-collapse-button {
+  align-items: center;
+  background: #fff;
+  border: 2px solid #fff;
+  color: #000;
+  display: inline-flex;
+  gap: 0.55rem;
+  justify-content: center;
+  letter-spacing: 0.08em;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  text-transform: uppercase;
+}
+
+.step-collapse-button:hover:not(:disabled) {
+  background: #dcdcdc;
+  border-color: #fff;
+}
+
+.collapse-icon {
+  align-items: center;
+  background: #000;
+  color: #fff;
+  display: inline-flex;
+  font-size: 1.2rem;
+  height: 1.45rem;
+  justify-content: center;
+  line-height: 1;
+  width: 1.45rem;
+}
+
+.collapsible-step.collapsed {
+  border-color: var(--border-strong);
+}
+
+.collapsible-step.collapsed .panel-title-row {
+  margin-bottom: 0;
+}
+
+.collapsible-step.collapsed .step-body {
+  display: none;
+}
+
+.collapsible-step.collapsed .step-collapse-button {
+  background: #000;
+  color: #fff;
+}
+
+.collapsible-step.collapsed .collapse-icon {
+  background: #fff;
+  color: #000;
+}
+
 .field-label {
   color: var(--muted);
   display: block;
@@ -340,6 +509,61 @@ select {
 
 .context-area {
   min-height: 105px;
+}
+
+.context-toolbox {
+  border: 1px solid var(--border);
+  margin: 0.9rem 0 0.75rem;
+  padding: 0.85rem;
+}
+
+.context-toolbox-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.context-toolbox .field-label {
+  color: var(--text);
+  margin-bottom: 0.25rem;
+}
+
+.context-toolbox .muted {
+  margin: 0;
+}
+
+.context-toolbox-actions,
+.context-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.context-toolbox-actions {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.context-chip-grid {
+  margin-top: 0.8rem;
+}
+
+.context-chip,
+.context-toolbox-action {
+  font-size: 0.84rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.context-chip {
+  background: #000;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+
+.context-chip:hover:not(:disabled) {
+  background: #111;
+  border-color: #fff;
 }
 
 .muted {
@@ -497,21 +721,28 @@ code {
 }
 
 @media (max-width: 980px) {
+  :root {
+    --config-sidebar-width: min(360px, calc(100vw - 2.75rem));
+  }
+
   .hero {
     align-items: stretch;
     flex-direction: column;
+    padding-left: 1rem;
+  }
+
+  body.config-sidebar-collapsed .hero {
+    padding-left: 1rem;
   }
 
   .hero-card {
     justify-content: flex-start;
   }
 
-  .studio-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: static;
+  .studio-shell,
+  .studio-shell.sidebar-collapsed {
+    padding-left: 1rem;
+    padding-right: 1rem;
   }
 }
 
@@ -525,6 +756,22 @@ code {
   .panel-title-row,
   .panel-summary {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .panel-title-actions,
+  .context-toolbox-header,
+  .context-toolbox-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .panel-title-actions button,
+  .context-toolbox-actions button {
+    flex: 1 1 auto;
+  }
+
+  .context-toolbox-header {
     flex-direction: column;
   }
 

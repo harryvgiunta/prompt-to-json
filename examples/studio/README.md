@@ -2,11 +2,11 @@
 
 A tiny local web UI for demonstrating the `prompt-to-json` MCP workflow.
 
-It has three tabs:
+It is organized around a hideable configuration sidebar and two workflow tabs:
 
-1. **LLM API key mode** — paste a provider key in the UI, or load one from `.env`, then generate, validate, edit, and repair JSON locally.
-2. **Manual mode** — no API key. Copy the contract payload into any model or agent, then paste the model's JSON back into the UI.
-3. **New contract** — generate a draft contract file from a natural-language app behavior, validate it, and save it into `json-contracts/`.
+1. **Configuration sidebar** — choose the contract repository folder and LLM provider/model once, then use the left-edge arrow to hide or reveal the sidebar when you are ready to work.
+2. **Generate JSON** — choose a contract in Step 1, then generate, validate, edit, and repair JSON against it.
+3. **New contract** — generate a draft contract file from a natural-language app behavior, validate it, and save it into the configured contract repository.
 
 Provider calls are demo-only Studio behavior. The production MCP stdio server still does not call LLMs and does not use API keys.
 
@@ -27,9 +27,9 @@ http://127.0.0.1:5177
 
 Then:
 
-1. Pick a contract, or click **New contract** to create one.
-2. Choose **Create new JSON** or **Edit existing JSON** when testing an existing contract.
-3. Use the default **LLM API key mode**, or switch to **Manual mode**.
+1. Review the **Configuration** sidebar for the contract repository and LLM provider/model. Use the left-edge arrow to hide it if you want more room.
+2. Pick a contract in the main Step 1 panel, or click **New contract** to create one. Step panels have prominent **Collapse/Expand** buttons when you want to reduce visual noise.
+3. Choose **Create new JSON** or **Edit existing JSON** when testing an existing contract.
 4. Generate or paste JSON, or generate a contract draft.
 5. Validate.
 6. Repair or save if needed.
@@ -52,7 +52,7 @@ Use **New contract** to turn an app behavior description into a contract file.
 
 Flow:
 
-1. Choose provider/model in the LLM config panel.
+1. Choose provider/model in the Configuration sidebar.
 2. Click **New contract**.
 3. Enter a contract name, behavior description, optional desired fields, example input, and context.
 4. Click **Generate contract**.
@@ -60,10 +60,10 @@ Flow:
 6. Click **Validate draft**.
 7. Click **Save contract**.
 
-Saving writes:
+Saving writes to the configured contract repository:
 
 ```text
-json-contracts/{contractName}.json
+{contractRepository}/{contractName}.json
 ```
 
 Then Studio reloads contracts and selects the new contract for testing.
@@ -79,17 +79,27 @@ Draft validation checks:
 
 Studio refuses to overwrite an existing file unless **Overwrite existing** is checked.
 
-## Extra context JSON
+## App context JSON
 
-Both Studio modes include an **Extra context JSON** field.
+The Generate JSON and New contract flows include an **App context optional** toolbox. Use it for generic app/system variables your app might already know, such as current date/time, created/updated timestamps, unique IDs, user, session, or workspace.
 
-Use it for app/system variables such as:
+Click preset buttons like **Current date/time**, **Created at**, **Unique ID**, **User**, **Session**, or **Workspace** to merge generated context into the JSON field. **Pretty format** parses and formats manually edited context.
+
+Example context:
 
 ```json
 {
-  "current_datetime": "2026-05-03T00:00:00Z",
-  "email": "JohnnyAppleseed@gmail.com",
-  "tenantId": "demo-real-estate-crm"
+  "current_datetime": "2026-05-04T10:30:00.000Z",
+  "current_date": "2026-05-04",
+  "timezone": "America/New_York",
+  "locale": "en-US",
+  "user": {
+    "id": "user_123",
+    "email": "user@example.com",
+    "name": "Jane Doe",
+    "role": "member"
+  },
+  "unique_id": "7b0f58e0-4c3d-4e13-9a3d-7ec7255e8d9f"
 }
 ```
 
@@ -100,19 +110,19 @@ Important behavior:
 - Context helps the model interpret the input.
 - The final JSON still must match the selected contract schema.
 - Context fields are not automatically copied into output JSON.
-- In LLM API key mode, context is sent to the selected provider, so do not include secrets unless the provider should receive them.
+- Context is sent to the selected provider, so do not include secrets unless the provider should receive them.
 
-## LLM API key mode
+## Generate JSON mode
 
 The fastest live test is:
 
-1. Open the Studio. It starts in **LLM API key mode**.
-2. Choose a provider.
+1. Open the Studio.
+2. In **Configuration**, choose a provider.
 3. Paste an API key, or use a key from `.env`.
 4. Type the model name you want to test.
 5. Choose a thinking level.
 6. Optionally tick **Save config** and **Save as default provider/model**.
-7. Choose **Create new JSON** or **Edit existing JSON**. For edit, paste the existing JSON and describe the requested change.
+7. In **Generate JSON**, choose **Create new JSON** or **Edit existing JSON**. For edit, paste the existing JSON and describe the requested change.
 8. Click **Generate JSON** or **Generate edited JSON**.
 
 Keys pasted into the browser are sent only to the local Studio server for that request. They are saved only when you tick **Save config**, which writes to your local project `.env`. The server binds to `127.0.0.1` by default.
@@ -179,7 +189,7 @@ Thinking is provider/model-dependent:
 
 ### Saving config from the UI
 
-By default, the Studio does not write provider settings or API keys anywhere. In **LLM API key mode**, you can opt in:
+By default, the Studio does not write provider settings or API keys anywhere. In **Configuration**, you can opt in:
 
 - Tick **Save config** to write the selected provider's model, thinking level, pasted API key, and base URL override to the local `.env` immediately. While checked, provider config field changes are saved again automatically.
 - Tick **Save as default provider/model** to also set `LLM_PROVIDER` so the saved provider/model is selected on the next load.
@@ -301,10 +311,11 @@ The Studio reads the same contract folder as the MCP server.
 
 Fastest UI path:
 
-1. Paste a folder path into **Contract repository folder** in Step 1.
-2. Click **Use folder**.
-3. Add or generate contracts in that folder.
-4. Click **Reload contracts** when files change.
+1. Open the **Configuration** sidebar.
+2. Paste a folder path into **Contract repository folder**.
+3. Click **Use folder**.
+4. Add or generate contracts in that folder.
+5. Click **Reload contracts** when files change.
 
 This lets you point Studio at your app/tool's own contract repository without restarting.
 
@@ -322,7 +333,7 @@ $env:PROMPT_TO_JSON_CONTRACTS_DIR="C:\path\to\contracts"; npm run studio
 
 ## API used by the UI
 
-The example server wraps the same tool handlers that the MCP stdio server exposes:
+The example server exposes UI routes and wraps the same tool handlers that the MCP stdio server exposes:
 
 - `GET /api/contracts-dir` → current contract repository folder
 - `POST /api/contracts-dir` → switch contract repository folder without restarting Studio
@@ -344,6 +355,6 @@ The Studio also exposes demo-only LLM routes:
 - `POST /api/llm/repair` → get a repair contract, call the selected provider, parse output, then validate
 - `POST /api/contract-drafts/generate` → use the selected provider to draft a new contract
 - `POST /api/contract-drafts/validate` → validate a generated contract draft without saving
-- `POST /api/contract-drafts/save` → validate, write `json-contracts/{contractName}.json`, and reload contracts
+- `POST /api/contract-drafts/save` → validate, write `{contractRepository}/{contractName}.json`, and reload contracts
 
 These HTTP endpoints are only for the demo Studio. The production MCP server remains the stdio server started by `prompt-to-json`.
