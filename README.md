@@ -98,6 +98,89 @@ By default, the server starts as a local stdio MCP server and loads contracts fr
 
 Adding a new behavior only requires adding a new `.json` file to the contracts folder. No MCP config change is required.
 
+## Adopt in your agent/app
+
+Use `prompt-to-json` as a local contract/validation tool beside the model your app already uses.
+
+### 1. Add the MCP server
+
+If your agent host supports MCP, add the server config above and point `PROMPT_TO_JSON_CONTRACTS_DIR` at the contracts folder your app owns.
+
+If your app has its own agent runtime, connect to the same MCP stdio server and call the tools directly. The important part is the flow, not the host.
+
+### 2. Write one contract per JSON behavior
+
+Create files such as:
+
+```text
+json-contracts/support-ticket.json
+json-contracts/real-estate-lead.json
+json-contracts/search-query.json
+```
+
+Each file contains:
+
+- `schema` for the final JSON shape
+- `rules` for app-specific mapping behavior
+- `examples` for model guidance
+- optional `operations` for create/edit behavior
+
+### 3. Pass app/system variables as `context`
+
+Do not hide runtime variables in the user prompt. Pass them as `context`:
+
+```json
+{
+  "contract": "real-estate-lead",
+  "input": "I'm pre-approved for a 4 bedroom house in Durham NC up to 900k.",
+  "context": {
+    "current_datetime": "2026-05-03T00:00:00Z",
+    "email": "JohnnyAppleseed@gmail.com",
+    "source": "website-lead-form"
+  }
+}
+```
+
+`prompt-to-json` passes context through unchanged. Contracts decide how to use it through rules/examples. The final JSON still must match the schema.
+
+### 4. Give your agent this tool policy
+
+Use this as the system/developer instruction for your agent:
+
+```text
+When converting natural language into app JSON, use prompt-to-json.
+
+Create flow:
+1. Call get_json_contract with contract, input, and context.
+2. Generate JSON using the returned schema, rules, examples, input, and context.
+3. Call validate_json.
+4. If invalid, call get_repair_contract, repair the JSON, and validate again.
+5. Return only validated JSON to the app.
+
+Edit flow:
+1. Call get_edit_contract with contract, currentJson, input, and context.
+2. Return the complete updated object, not a patch.
+3. Call validate_json.
+4. Repair and validate again if needed.
+
+Never skip validation. Never add fields that are not allowed by the schema. Do not copy context fields into output unless the schema allows them and the contract rules say to use them.
+```
+
+### 5. Runtime loop in your app
+
+At request time, your app should do:
+
+```text
+user input + app context
+  -> get_json_contract or get_edit_contract
+  -> your chosen model generates JSON
+  -> validate_json
+  -> if invalid: get_repair_contract -> model repairs -> validate_json
+  -> app consumes valid JSON
+```
+
+The MCP server does not call the model and does not mutate output. Your app/agent remains in control of model choice, provider keys, context, and business defaults.
+
 ## Contract files
 
 Each contract is one `.json` file in `json-contracts/`.
