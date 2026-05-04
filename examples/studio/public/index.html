@@ -232,12 +232,11 @@
             <p class="muted small-copy">Context is sent to the selected provider in LLM API key mode. Do not include secrets unless the provider should receive them.</p>
 
             <div class="button-row">
-              <button id="llmUseExampleInput" class="secondary-button" type="button">Use example input</button>
               <button id="llmGenerate" type="button" disabled>Generate JSON</button>
             </div>
 
             <label class="field-label" for="llmJsonOutput">Generated JSON</label>
-            <textarea id="llmJsonOutput" class="text-area json-area" spellcheck="false" placeholder='{"summary":"Users cannot log in","severity":"critical","category":"authentication"}'></textarea>
+            <textarea id="llmJsonOutput" class="text-area json-area" spellcheck="false" placeholder="Generated JSON will appear here after you click Generate JSON."></textarea>
 
             <div class="button-row">
               <button id="llmValidate" type="button" disabled>Validate</button>

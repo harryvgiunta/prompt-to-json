@@ -44,7 +44,6 @@ const elements = {
   llmCurrentJsonInput: document.querySelector("#llmCurrentJsonInput"),
   llmEditFields: document.querySelector("#llmEditFields"),
   llmContextInput: document.querySelector("#llmContextInput"),
-  llmUseExampleInput: document.querySelector("#llmUseExampleInput"),
   llmGenerate: document.querySelector("#llmGenerate"),
   llmJsonOutput: document.querySelector("#llmJsonOutput"),
   llmValidate: document.querySelector("#llmValidate"),
@@ -110,7 +109,6 @@ function wireEvents() {
     if (!example || example.output === undefined) return toast("No example JSON for this contract.");
     const json = pretty(example.output);
     elements.jsonOutput.value = json;
-    elements.llmJsonOutput.value = json;
     elements.currentJsonInput.value = json;
     elements.llmCurrentJsonInput.value = json;
     clearValidationState();
@@ -121,7 +119,6 @@ function wireEvents() {
   elements.useInvalidExample.addEventListener("click", () => {
     const json = pretty(makeInvalidExample());
     elements.jsonOutput.value = json;
-    elements.llmJsonOutput.value = json;
     elements.currentJsonInput.value = json;
     elements.llmCurrentJsonInput.value = json;
     clearValidationState();
@@ -191,20 +188,6 @@ function wireEvents() {
     renderLlmConfigStatus();
     updateButtonState();
     toast("Cleared API key from this browser session.");
-  });
-
-  elements.llmUseExampleInput.addEventListener("click", () => {
-    const example = state.operation === "edit" ? firstEditExample() : firstExample();
-    if (!example) return toast("No example input for this contract.");
-    const text = formatInputValue(example.input);
-    elements.llmSourceInput.value = text;
-    if (!elements.sourceInput.value.trim()) elements.sourceInput.value = text;
-    if (state.operation === "edit" && example.currentJson !== undefined) {
-      const json = pretty(example.currentJson);
-      elements.llmCurrentJsonInput.value = json;
-      if (!elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
-    }
-    updateButtonState();
   });
 
   elements.llmGenerate.addEventListener("click", async () => {
@@ -518,7 +501,6 @@ function renderContractDetails(contract, options = {}) {
   if (example?.output !== undefined) {
     const json = pretty(example.output);
     if (forceExampleValues || !elements.jsonOutput.value.trim()) elements.jsonOutput.value = json;
-    if (forceExampleValues || !elements.llmJsonOutput.value.trim()) elements.llmJsonOutput.value = json;
     if (forceExampleValues || !elements.currentJsonInput.value.trim()) elements.currentJsonInput.value = json;
     if (forceExampleValues || !elements.llmCurrentJsonInput.value.trim()) elements.llmCurrentJsonInput.value = json;
   }
@@ -954,7 +936,6 @@ function updateButtonState() {
   elements.copyJsonContract.disabled = !state.lastJsonContract;
   elements.buildRepair.disabled = !hasFailedValidation;
   elements.copyRepair.disabled = !state.lastRepairContract;
-  elements.llmUseExampleInput.disabled = !hasContract;
   elements.llmGenerate.disabled = !hasContract || !canUseOperation || !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasLlmInput || !hasLlmCurrentJson;
   elements.llmValidate.disabled = !hasContract || !hasLlmJson;
   elements.llmRepair.disabled = !hasContract || !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasFailedLlmValidation;

@@ -3,7 +3,12 @@
   "rules": [
     "Only include budget, bedroom count, locations, and timing when stated or strongly implied.",
     "Use buy for purchase leads, rent for rental leads, sell for seller leads, and lease for commercial leasing leads.",
-    "Use unknown when transaction type, property type, timeline, financing, or contact preference is not clear.",
+    "Use unknown when transaction type, property type, timeline, or financing is not clear.",
+    "If context.email is provided, copy it to contactEmail.",
+    "Only include contactPreference when the user explicitly states a preference or context.defaultContactPreference is provided.",
+    "Do not output contactPreference as unknown; omit contactPreference when no preference is known.",
+    "An email address in context by itself is contact information, not necessarily a user preference.",
+    "User-stated contact preference overrides context.defaultContactPreference.",
     "Normalize must-haves into short phrases such as parking, yard, pet friendly, near transit, or home office.",
     "Do not make lending, legal, or fair-housing judgments."
   ],
@@ -13,13 +18,7 @@
     "properties": {
       "transactionType": {
         "type": "string",
-        "enum": [
-          "buy",
-          "rent",
-          "sell",
-          "lease",
-          "unknown"
-        ]
+        "enum": ["buy", "rent", "sell", "lease", "unknown"]
       },
       "propertyType": {
         "type": "string",
@@ -55,14 +54,7 @@
       },
       "timeline": {
         "type": "string",
-        "enum": [
-          "asap",
-          "0_3_months",
-          "3_6_months",
-          "6_12_months",
-          "browsing",
-          "unknown"
-        ]
+        "enum": ["asap", "0_3_months", "3_6_months", "6_12_months", "browsing", "unknown"]
       },
       "mustHaves": {
         "type": "array",
@@ -73,21 +65,15 @@
       },
       "financingStatus": {
         "type": "string",
-        "enum": [
-          "pre_approved",
-          "cash",
-          "needs_financing",
-          "unknown"
-        ]
+        "enum": ["pre_approved", "cash", "needs_financing", "unknown"]
+      },
+      "contactEmail": {
+        "type": "string",
+        "format": "email"
       },
       "contactPreference": {
         "type": "string",
-        "enum": [
-          "call",
-          "text",
-          "email",
-          "unknown"
-        ]
+        "enum": ["call", "text", "email"]
       }
     },
     "required": [
@@ -95,8 +81,7 @@
       "propertyType",
       "timeline",
       "mustHaves",
-      "financingStatus",
-      "contactPreference"
+      "financingStatus"
     ]
   },
   "examples": [
@@ -109,58 +94,28 @@
         "budgetMax": 650000,
         "bedrooms": 3,
         "timeline": "0_3_months",
-        "mustHaves": [
-          "parking",
-          "home office"
-        ],
+        "mustHaves": ["parking", "home office"],
         "financingStatus": "pre_approved",
         "contactPreference": "text"
       }
+    },
+    {
+      "input": "I'm pre-approved for a 4 bedroom house in Durham NC for up to 900k. We need a pool and a large backyard for dogs. We are looking to move this summer.",
+      "context": {
+        "current_datetime": "2026-05-03T00:00:00Z",
+        "email": "JohnnyAppleseed@gmail.com"
+      },
+      "output": {
+        "transactionType": "buy",
+        "propertyType": "single_family",
+        "locationQuery": "Durham, NC",
+        "budgetMax": 900000,
+        "bedrooms": 4,
+        "timeline": "3_6_months",
+        "mustHaves": ["pool", "large backyard", "pet friendly"],
+        "financingStatus": "pre_approved",
+        "contactEmail": "JohnnyAppleseed@gmail.com"
+      }
     }
-  ],
-  "operations": {
-    "edit": {
-      "enabled": true,
-      "return": "full_object",
-      "rules": [
-        "Start from currentJson.",
-        "Apply only the user's requested change.",
-        "Preserve all unspecified fields exactly.",
-        "Return the complete updated JSON object."
-      ],
-      "examples": [
-        {
-          "currentJson": {
-            "transactionType": "buy",
-            "propertyType": "condo",
-            "locationQuery": "Austin",
-            "budgetMax": 650000,
-            "bedrooms": 3,
-            "timeline": "0_3_months",
-            "mustHaves": [
-              "parking",
-              "home office"
-            ],
-            "financingStatus": "pre_approved",
-            "contactPreference": "text"
-          },
-          "input": "change this to a 4 bedroom house in Raleigh up to 800k",
-          "output": {
-            "transactionType": "buy",
-            "propertyType": "single_family",
-            "locationQuery": "Raleigh",
-            "budgetMax": 800000,
-            "bedrooms": 4,
-            "timeline": "0_3_months",
-            "mustHaves": [
-              "parking",
-              "home office"
-            ],
-            "financingStatus": "pre_approved",
-            "contactPreference": "text"
-          }
-        }
-      ]
-    }
-  }
+  ]
 }
