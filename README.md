@@ -678,7 +678,7 @@ Open:
 http://127.0.0.1:5177
 ```
 
-The Studio opens in **LLM API key mode** by default. Use the operation selector to choose **Create new JSON** or **Edit existing JSON**. You can switch to **Manual mode** if you want to copy/paste payloads into a separate model.
+The Studio opens in **LLM API key mode** by default. Use the operation selector to choose **Create new JSON** or **Edit existing JSON**. You can switch to **Manual mode** if you want to copy/paste payloads into a separate model, or **New contract** to draft a new contract from a natural-language app behavior.
 
 ### LLM API key mode
 
@@ -693,6 +693,21 @@ For a 30-60 second live test:
 7. Optionally tick **Save config** and **Save as default provider/model** to write the selected provider settings to your local `.env` immediately.
 8. Choose **Create new JSON** or **Edit existing JSON**. For edit, paste the existing JSON and describe the requested change.
 9. Click **Generate JSON** or **Generate edited JSON**.
+
+### New contract mode
+
+Use **New contract** when you want Studio to draft a contract file for a new app behavior.
+
+1. Choose a provider and model in the same LLM config panel.
+2. Click **New contract**.
+3. Enter a contract name such as `churn-risk`.
+4. Describe the behavior, desired fields, and optional examples/context.
+5. Click **Generate contract**.
+6. Review and edit the generated draft JSON.
+7. Click **Validate draft**.
+8. Click **Save contract** to write `json-contracts/{contractName}.json`, reload the contract list, and select the new contract.
+
+Studio validates the draft before saving. It checks the generated JSON Schema, contract shape, safe filename, and whether example outputs validate against the generated schema. It will not overwrite an existing contract unless **Overwrite existing** is checked.
 
 ### Manual mode
 
@@ -749,7 +764,7 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434/api
 OLLAMA_MODEL=llama3.2
 ```
 
-To test your own contracts, add `.json` files to `json-contracts/` and click **Reload**, or run with `PROMPT_TO_JSON_CONTRACTS_DIR=/path/to/contracts`.
+To test your own contracts, either paste a folder into **Contract repository folder** in Step 1 and click **Use folder**, add `.json` files to `json-contracts/` and click **Reload**, or run with `PROMPT_TO_JSON_CONTRACTS_DIR=/path/to/contracts`.
 
 See [`examples/studio`](examples/studio) for details.
 

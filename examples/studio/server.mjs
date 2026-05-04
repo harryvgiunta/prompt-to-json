@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,7 +18,7 @@ await loadEnvFiles([
 const defaultPort = 5177;
 const port = parsePort(process.env.STUDIO_PORT ?? process.env.PORT, defaultPort);
 const host = process.env.STUDIO_HOST ?? "127.0.0.1";
-const contractsDir = path.resolve(
+let contractsDir = path.resolve(
   process.env.PROMPT_TO_JSON_CONTRACTS_DIR ?? path.join(process.cwd(), "json-contracts")
 );
 const studioEnvPath = path.join(process.cwd(), ".env");
@@ -37,16 +37,9 @@ const logger = {
   }
 };
 
-const store = new ContractStore({
-  contractsDir,
-  allowInvalidContracts: parseBoolean(process.env.ALLOW_INVALID_CONTRACTS, false),
-  logger
-});
-
-const loadedContracts = await store.reload({ emitChange: false });
-store.startWatching();
-
-const handlers = createToolHandlers(store, new JsonValidator());
+let store;
+let handlers;
+const loadedContracts = await switchContractsDir(contractsDir);
 const server = createServer((request, response) => {
   void handleRequest(request, response).catch((error) => {
     sendJson(response, statusCodeFor(error), {
@@ -54,6 +47,37 @@ const server = createServer((request, response) => {
     });
   });
 });
+
+async function switchContractsDir(nextContractsDir) {
+  const resolvedContractsDir = path.resolve(nextContractsDir);
+  const nextStore = new ContractStore({
+    contractsDir: resolvedContractsDir,
+    allowInvalidContracts: parseBoolean(process.env.ALLOW_INVALID_CONTRACTS, false),
+    logger
+  });
+  const loaded = await nextStore.reload({ emitChange: false });
+  nextStore.startWatching();
+
+  const previousStore = store;
+  contractsDir = resolvedContractsDir;
+  process.env.PROMPT_TO_JSON_CONTRACTS_DIR = contractsDir;
+  store = nextStore;
+  handlers = createToolHandlers(store, new JsonValidator());
+
+  if (previousStore) {
+    await previousStore.close();
+  }
+
+  return loaded;
+}
+
+function publicContractsDirConfig() {
+  return {
+    contractsDir,
+    relativeContractsDir: path.relative(process.cwd(), contractsDir) || ".",
+    contracts: store.listNames()
+  };
+}
 
 server.listen(port, host, () => {
   const publicLlm = publicLlmConfig();
@@ -324,6 +348,69 @@ const PROVIDERS = [
   }
 ];
 
+const CONTRACT_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+const NEW_CONTRACT_DRAFT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    contractName: {
+      type: "string",
+      pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    contract: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        description: { type: "string", minLength: 1 },
+        rules: {
+          type: "array",
+          items: { type: "string" },
+          default: []
+        },
+        operations: {
+          type: "object",
+          additionalProperties: true
+        },
+        schema: {
+          type: "object",
+          additionalProperties: true
+        },
+        examples: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: true,
+            properties: {
+              input: {},
+              output: {}
+            },
+            required: ["input", "output"]
+          },
+          default: []
+        }
+      },
+      required: ["description", "rules", "schema", "examples"]
+    }
+  },
+  required: ["contractName", "contract"]
+};
+
+const NEW_CONTRACT_RULES = [
+  "Generate one prompt-to-json contract draft for the requested app behavior.",
+  "Return a wrapper object with contractName and contract fields.",
+  "contractName must be a safe filename-style identifier such as churn-risk or support-ticket; do not include .json.",
+  "The contract.schema must be valid JSON Schema for the final app JSON.",
+  "Use additionalProperties:false for object schemas unless the user asks for arbitrary fields.",
+  "Prefer optional fields over forced unknown values unless unknown is an intentional business enum value.",
+  "Use required only for fields that every valid output should contain.",
+  "Include 1 to 3 high-quality examples whose outputs validate against the generated schema.",
+  "Examples must not contradict the rules.",
+  "Add rules for how context should be used when app/system variables are likely.",
+  "Do not include a version field.",
+  "Do not include secrets, code, markdown, or commentary."
+];
+
 function createLlmConfig(env) {
   return {
     defaultProvider: env.LLM_PROVIDER ?? env.STUDIO_LLM_PROVIDER ?? "openai",
@@ -487,6 +574,22 @@ async function handleApiRequest(request, response, url) {
     return true;
   }
 
+  if (method === "GET" && pathname === "/api/contracts-dir") {
+    sendJson(response, 200, publicContractsDirConfig());
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/contracts-dir") {
+    const body = await readJsonBody(request);
+    const nextContractsDir = requiredString(body.contractsDir, "contractsDir");
+    const loaded = await switchContractsDir(nextContractsDir);
+    sendJson(response, 200, {
+      ...publicContractsDirConfig(),
+      loaded: loaded.length
+    });
+    return true;
+  }
+
   if (method === "GET" && pathname === "/api/contracts") {
     sendJson(response, 200, await handlers.list_contracts({}));
     return true;
@@ -506,6 +609,24 @@ async function handleApiRequest(request, response, url) {
   if (method === "POST" && pathname === "/api/llm/save-config") {
     const body = await readJsonBody(request);
     sendJson(response, 200, await saveLlmConfigRequest(body));
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/contract-drafts/generate") {
+    const body = await readJsonBody(request);
+    sendJson(response, 200, await generateContractDraftWithLlm(body));
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/contract-drafts/validate") {
+    const body = await readJsonBody(request);
+    sendJson(response, 200, validateContractDraftRequest(body));
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/contract-drafts/save") {
+    const body = await readJsonBody(request);
+    sendJson(response, 200, await saveContractDraftRequest(body));
     return true;
   }
 
@@ -564,6 +685,359 @@ async function saveLlmConfigRequest(input) {
   return saveLlmConfig(input, llm, {
     saveAsDefault: optionalBoolean(input.saveAsDefault)
   });
+}
+
+async function generateContractDraftWithLlm(input) {
+  const llm = resolveLlmRequest(input);
+  const suggestedName = optionalString(input.suggestedName);
+  const description = requiredString(input.description, "description");
+  const desiredFields = normalizeStringList(input.desiredFields);
+  const exampleInputs = normalizeStringList(input.exampleInputs);
+  const userContext = optionalContext(input.context);
+
+  const requestPayload = {
+    suggestedName: suggestedName || slugFromText(description),
+    description,
+    desiredFields,
+    exampleInputs,
+    context: withStudioContext(userContext, {
+      mode: "contract-draft",
+      llmProvider: llm.provider.id,
+      note: "This payload asks the provider to draft a new prompt-to-json contract."
+    })
+  };
+
+  const promptPayload = {
+    contract: "new-contract",
+    instructions: [
+      "Create a new prompt-to-json contract draft.",
+      "Return JSON only.",
+      "Do not return markdown.",
+      "The returned JSON must match the schema exactly."
+    ],
+    description: "Generate a prompt-to-json contract file from a natural-language app behavior description.",
+    rules: NEW_CONTRACT_RULES,
+    schema: NEW_CONTRACT_DRAFT_SCHEMA,
+    examples: [newContractExample()],
+    input: requestPayload
+  };
+
+  const llmResponse = await callLlmForJson({
+    llm,
+    schema: NEW_CONTRACT_DRAFT_SCHEMA,
+    messages: [
+      {
+        role: "system",
+        content: "You are a careful prompt-to-json contract author. Return one JSON value only. Do not include markdown, code fences, commentary, or extra keys."
+      },
+      {
+        role: "user",
+        content: buildNewContractPrompt(promptPayload)
+      }
+    ]
+  });
+  const savedConfig = await trySaveLlmConfig(input, llm);
+  const parsed = parseModelJson(llmResponse.content);
+
+  const baseResult = {
+    provider: llm.provider.id,
+    providerLabel: llm.provider.label,
+    adapter: llm.provider.adapter,
+    mode: "contract-draft",
+    baseUrl: redactUrl(llm.baseUrl),
+    model: llm.model,
+    thinking: llm.thinking,
+    ...(llmResponse.reasoning ? { reasoning: llmResponse.reasoning } : {}),
+    ...(llmResponse.usage ? { usage: llmResponse.usage } : {}),
+    ...(llmResponse.providerResponse ? { providerResponse: llmResponse.providerResponse } : {}),
+    ...(savedConfig ? { savedConfig } : {}),
+    rawText: llmResponse.content
+  };
+
+  if (!parsed.ok) {
+    return {
+      ...baseResult,
+      parseError: parsed.error,
+      validation: {
+        valid: false,
+        errors: [parsed.error],
+        warnings: []
+      }
+    };
+  }
+
+  const validation = validateContractDraftValue(parsed.value);
+  return {
+    ...baseResult,
+    draft: parsed.value,
+    validation
+  };
+}
+
+function validateContractDraftRequest(input) {
+  const draft = normalizeContractDraftInput(input);
+  const validation = validateContractDraftValue(draft);
+  return {
+    draft,
+    validation
+  };
+}
+
+async function saveContractDraftRequest(input) {
+  const draft = normalizeContractDraftInput(input);
+  const overwrite = optionalBoolean(input.overwrite);
+  const validation = validateContractDraftValue(draft);
+
+  if (!validation.valid) {
+    throw httpError(400, `Contract draft is invalid: ${validation.errors.join("; ")}`);
+  }
+
+  const filePath = contractDraftPath(draft.contractName);
+  await mkdir(contractsDir, { recursive: true });
+
+  try {
+    await writeFile(filePath, `${JSON.stringify(draft.contract, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: overwrite ? "w" : "wx"
+    });
+  } catch (error) {
+    if (error && error.code === "EEXIST") {
+      throw httpError(409, `Contract already exists: ${draft.contractName}. Tick Overwrite existing to replace it.`);
+    }
+    throw error;
+  }
+
+  const reload = await handlers.reload_contracts({});
+  return {
+    saved: true,
+    contractName: draft.contractName,
+    path: path.relative(process.cwd(), filePath),
+    validation,
+    reload
+  };
+}
+
+function normalizeContractDraftInput(input) {
+  const candidate = isPlainObject(input?.draft) ? input.draft : input;
+  if (!isPlainObject(candidate)) {
+    throw httpError(400, "Contract draft must be a JSON object.");
+  }
+
+  const contractName = requiredString(candidate.contractName, "contractName");
+  const contract = candidate.contract;
+  if (!isPlainObject(contract)) {
+    throw httpError(400, "contract must be a JSON object.");
+  }
+
+  return { contractName, contract };
+}
+
+function validateContractDraftValue(draft) {
+  const errors = [];
+  const warnings = [];
+
+  if (!isPlainObject(draft)) {
+    return { valid: false, errors: ["Draft must be a JSON object."], warnings };
+  }
+
+  const { contractName, contract } = draft;
+  if (typeof contractName !== "string" || contractName.trim() === "") {
+    errors.push("contractName must be a non-empty string.");
+  } else if (!isSafeContractName(contractName)) {
+    errors.push("contractName must be a safe filename-style contract name.");
+  }
+
+  if (!isPlainObject(contract)) {
+    errors.push("contract must be a JSON object.");
+    return { valid: false, errors, warnings };
+  }
+
+  if (Object.prototype.hasOwnProperty.call(contract, "version")) {
+    errors.push("contract must not include a version field; use Git for versioning.");
+  }
+
+  if (typeof contract.description !== "string" || contract.description.trim() === "") {
+    errors.push("contract.description must be a non-empty string.");
+  }
+
+  if (!Array.isArray(contract.rules) || !contract.rules.every((rule) => typeof rule === "string")) {
+    errors.push("contract.rules must be an array of strings.");
+  } else if (contract.rules.length === 0) {
+    warnings.push("No rules included. Add rules to make app-specific behavior explicit.");
+  }
+
+  if (!isPlainObject(contract.schema)) {
+    errors.push("contract.schema must be a JSON Schema object.");
+  } else {
+    try {
+      new JsonValidator().validateSchema(contract.schema);
+    } catch (error) {
+      errors.push(messageFor(error));
+    }
+
+    if (contract.schema.type === "object" && contract.schema.additionalProperties !== false) {
+      warnings.push("Object schema does not set additionalProperties:false.");
+    }
+
+    if (schemaContainsUnknownEnum(contract.schema)) {
+      warnings.push("Schema contains an enum value named unknown. Consider making that field optional unless unknown is intentional.");
+    }
+  }
+
+  if (!Array.isArray(contract.examples)) {
+    errors.push("contract.examples must be an array.");
+  } else {
+    if (contract.examples.length === 0) warnings.push("No examples included. Add at least one high-quality example.");
+
+    if (isPlainObject(contract.schema)) {
+      const validator = new JsonValidator();
+      const loaded = {
+        name: typeof contractName === "string" ? contractName : "draft",
+        description: typeof contract.description === "string" ? contract.description : "",
+        rules: Array.isArray(contract.rules) ? contract.rules : [],
+        schema: contract.schema,
+        examples: contract.examples,
+        sourcePath: "<draft>"
+      };
+
+      contract.examples.forEach((example, index) => {
+        if (!isPlainObject(example)) {
+          errors.push(`examples[${index}] must be an object.`);
+          return;
+        }
+        if (!Object.prototype.hasOwnProperty.call(example, "input")) {
+          errors.push(`examples[${index}].input is required.`);
+        }
+        if (!Object.prototype.hasOwnProperty.call(example, "output")) {
+          errors.push(`examples[${index}].output is required.`);
+          return;
+        }
+
+        try {
+          const result = validator.validateAgainstContract(loaded, example.output);
+          if (!result.valid) {
+            errors.push(`examples[${index}].output does not validate: ${result.errors.map((error) => `${error.path || "/"} ${error.message}`).join(", ")}`);
+          }
+        } catch (error) {
+          errors.push(`examples[${index}].output validation failed: ${messageFor(error)}`);
+        }
+      });
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings
+  };
+}
+
+function contractDraftPath(contractName) {
+  if (!isSafeContractName(contractName)) {
+    throw httpError(400, `Invalid contract name: ${contractName}`);
+  }
+
+  const filePath = path.resolve(contractsDir, `${contractName}.json`);
+  const relative = path.relative(contractsDir, filePath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw httpError(400, "Contract path escapes contracts directory.");
+  }
+  return filePath;
+}
+
+function isSafeContractName(name) {
+  return (
+    CONTRACT_NAME_RE.test(name) &&
+    !name.includes("..") &&
+    !name.includes("/") &&
+    !name.includes("\\") &&
+    !name.includes(path.sep)
+  );
+}
+
+function normalizeStringList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value !== "string") return [];
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function slugFromText(value) {
+  const slug = String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return slug || "new-contract";
+}
+
+function schemaContainsUnknownEnum(schema) {
+  if (Array.isArray(schema)) return schema.some(schemaContainsUnknownEnum);
+  if (!isPlainObject(schema)) return false;
+  if (Array.isArray(schema.enum) && schema.enum.includes("unknown")) return true;
+  return Object.values(schema).some(schemaContainsUnknownEnum);
+}
+
+function buildNewContractPrompt(promptPayload) {
+  return [
+    "Use this prompt-to-json meta-contract to generate a new contract draft.",
+    "Return JSON only. Do not include markdown or explanation.",
+    "The meta-contract payload is below:",
+    JSON.stringify(promptPayload, null, 2)
+  ].join("\n\n");
+}
+
+function newContractExample() {
+  return {
+    input: {
+      suggestedName: "churn-risk",
+      description: "Convert customer cancellation emails into structured churn-risk records for a SaaS customer success team.",
+      desiredFields: ["customerIntent", "cancellationReason", "urgency", "refundRequested", "sentiment", "recommendedFollowUp"],
+      exampleInputs: ["I need to cancel before my renewal next week. Your product is too expensive and we barely use it anymore."],
+      context: {
+        current_datetime: "2026-05-03T00:00:00Z"
+      }
+    },
+    output: {
+      contractName: "churn-risk",
+      contract: {
+        description: "Convert customer cancellation messages into a structured churn-risk record.",
+        rules: [
+          "Only include fields supported by the message or context.",
+          "Use refundRequested only when the customer asks for a refund or credit.",
+          "Use urgency high when cancellation is requested before a near-term renewal or deadline."
+        ],
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            customerIntent: { type: "string", enum: ["cancel", "downgrade", "complaint", "question"] },
+            cancellationReason: { type: "string" },
+            urgency: { type: "string", enum: ["low", "medium", "high"] },
+            refundRequested: { type: "boolean" },
+            sentiment: { type: "string", enum: ["negative", "neutral", "positive"] },
+            recommendedFollowUp: { type: "string", enum: ["support", "success_manager", "billing", "retention_offer"] }
+          },
+          required: ["customerIntent", "urgency", "sentiment", "recommendedFollowUp"]
+        },
+        examples: [
+          {
+            input: "I need to cancel before my renewal next week. Your product is too expensive and we barely use it anymore.",
+            output: {
+              customerIntent: "cancel",
+              cancellationReason: "too expensive and low usage",
+              urgency: "high",
+              refundRequested: false,
+              sentiment: "negative",
+              recommendedFollowUp: "success_manager"
+            }
+          }
+        ]
+      }
+    }
+  };
 }
 
 async function generateJsonWithLlm(input) {
@@ -1599,7 +2073,7 @@ function messageFor(error) {
 
 async function shutdown(signal) {
   console.log(`\n[studio] Received ${signal}; shutting down.`);
-  await store.close();
+  if (store) await store.close();
   await new Promise((resolve) => server.close(resolve));
   process.exit(0);
 }

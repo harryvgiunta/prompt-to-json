@@ -1,0 +1,284 @@
+{
+  "description": "Convert natural language into a structured BI chart generation spec.",
+  "rules": [
+    "Use chartType line and chartFunction line_graph for line charts, trends, and over-time comparisons.",
+    "Represent each requested metric or breakout as a separate series.",
+    "Use concise axis labels and series labels from the user when provided.",
+    "Normalize named colors to 6-digit hex values.",
+    "If multiple series are requested without explicit colors, assign distinct colors from the BI tool's default palette.",
+    "Only include filters, time grain, and data source when explicitly stated or strongly implied.",
+    "Do not invent data values; this spec describes how to query and render the chart."
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "chartType": {
+        "type": "string",
+        "enum": ["line", "bar", "area", "scatter", "pie", "table", "unknown"]
+      },
+      "chartFunction": {
+        "type": "string",
+        "enum": ["line_graph", "bar_chart", "area_chart", "scatter_plot", "pie_chart", "table", "unknown"]
+      },
+      "title": {
+        "type": "string"
+      },
+      "dataSource": {
+        "type": "string"
+      },
+      "xAxis": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "dataType": {
+            "type": "string",
+            "enum": ["date", "datetime", "number", "string", "category", "unknown"]
+          },
+          "timeGrain": {
+            "type": "string",
+            "enum": ["hour", "day", "week", "month", "quarter", "year", "none"]
+          }
+        },
+        "required": ["field", "label", "dataType"]
+      },
+      "yAxis": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "scale": {
+            "type": "string",
+            "enum": ["linear", "log"]
+          },
+          "valueFormat": {
+            "type": "string",
+            "enum": ["number", "currency", "percent"]
+          }
+        },
+        "required": ["label"]
+      },
+      "series": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "aggregation": {
+              "type": "string",
+              "enum": ["sum", "average", "count", "min", "max", "none"]
+            },
+            "label": {
+              "type": "string"
+            },
+            "lineColor": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "lineStyle": {
+              "type": "string",
+              "enum": ["solid", "dashed", "dotted"]
+            },
+            "yAxisId": {
+              "type": "string"
+            }
+          },
+          "required": ["field", "aggregation", "label", "lineColor"]
+        }
+      },
+      "filters": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "operator": {
+              "type": "string",
+              "enum": [
+                "equals",
+                "not_equals",
+                "greater_than",
+                "less_than",
+                "greater_than_or_equal",
+                "less_than_or_equal",
+                "between",
+                "in"
+              ]
+            },
+            "value": {}
+          },
+          "required": ["field", "operator", "value"]
+        },
+        "default": []
+      },
+      "legend": {
+        "type": "boolean"
+      },
+      "showDataLabels": {
+        "type": "boolean"
+      }
+    },
+    "required": ["chartType", "chartFunction", "xAxis", "yAxis", "series", "legend"]
+  },
+  "examples": [
+    {
+      "input": "Create a line graph in the BI dashboard showing monthly revenue and gross profit from the sales table for 2025. Put order date by month on the x-axis and dollars on the y-axis. Color revenue blue and gross profit green, label the lines Revenue and Gross Profit, and show the legend.",
+      "output": {
+        "chartType": "line",
+        "chartFunction": "line_graph",
+        "title": "Monthly Revenue and Gross Profit",
+        "dataSource": "sales",
+        "xAxis": {
+          "field": "order_date",
+          "label": "Month",
+          "dataType": "date",
+          "timeGrain": "month"
+        },
+        "yAxis": {
+          "label": "Dollars",
+          "scale": "linear",
+          "valueFormat": "currency"
+        },
+        "series": [
+          {
+            "field": "revenue",
+            "aggregation": "sum",
+            "label": "Revenue",
+            "lineColor": "#2563EB",
+            "lineStyle": "solid"
+          },
+          {
+            "field": "gross_profit",
+            "aggregation": "sum",
+            "label": "Gross Profit",
+            "lineColor": "#16A34A",
+            "lineStyle": "solid"
+          }
+        ],
+        "filters": [
+          {
+            "field": "order_date",
+            "operator": "between",
+            "value": ["2025-01-01", "2025-12-31"]
+          }
+        ],
+        "legend": true
+      }
+    }
+  ],
+  "operations": {
+    "edit": {
+      "enabled": true,
+      "return": "full_object",
+      "rules": [
+        "Start from currentJson.",
+        "Apply only the user's requested chart change.",
+        "Preserve all unspecified fields exactly.",
+        "Return the complete updated chart generation spec."
+      ],
+      "examples": [
+        {
+          "currentJson": {
+            "chartType": "line",
+            "chartFunction": "line_graph",
+            "title": "Monthly Revenue and Gross Profit",
+            "dataSource": "sales",
+            "xAxis": {
+              "field": "order_date",
+              "label": "Month",
+              "dataType": "date",
+              "timeGrain": "month"
+            },
+            "yAxis": {
+              "label": "Dollars",
+              "scale": "linear",
+              "valueFormat": "currency"
+            },
+            "series": [
+              {
+                "field": "revenue",
+                "aggregation": "sum",
+                "label": "Revenue",
+                "lineColor": "#2563EB",
+                "lineStyle": "solid"
+              },
+              {
+                "field": "gross_profit",
+                "aggregation": "sum",
+                "label": "Gross Profit",
+                "lineColor": "#16A34A",
+                "lineStyle": "solid"
+              }
+            ],
+            "filters": [
+              {
+                "field": "order_date",
+                "operator": "between",
+                "value": ["2025-01-01", "2025-12-31"]
+              }
+            ],
+            "legend": true
+          },
+          "input": "Make the revenue line purple and show data labels.",
+          "output": {
+            "chartType": "line",
+            "chartFunction": "line_graph",
+            "title": "Monthly Revenue and Gross Profit",
+            "dataSource": "sales",
+            "xAxis": {
+              "field": "order_date",
+              "label": "Month",
+              "dataType": "date",
+              "timeGrain": "month"
+            },
+            "yAxis": {
+              "label": "Dollars",
+              "scale": "linear",
+              "valueFormat": "currency"
+            },
+            "series": [
+              {
+                "field": "revenue",
+                "aggregation": "sum",
+                "label": "Revenue",
+                "lineColor": "#9333EA",
+                "lineStyle": "solid"
+              },
+              {
+                "field": "gross_profit",
+                "aggregation": "sum",
+                "label": "Gross Profit",
+                "lineColor": "#16A34A",
+                "lineStyle": "solid"
+              }
+            ],
+            "filters": [
+              {
+                "field": "order_date",
+                "operator": "between",
+                "value": ["2025-01-01", "2025-12-31"]
+              }
+            ],
+            "legend": true,
+            "showDataLabels": true
+          }
+        }
+      ]
+    }
+  }
+}

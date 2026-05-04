@@ -29,7 +29,14 @@
           <button id="reloadContracts" class="secondary-button" type="button">Reload contracts</button>
         </div>
 
-        <label class="field-label" for="contractSelect">Contract</label>
+        <label class="field-label" for="contractsDirInput">Contract repository folder</label>
+        <input id="contractsDirInput" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="C:\\path\\to\\json-contracts" />
+        <div class="button-row compact-row">
+          <button id="applyContractsDir" class="secondary-button" type="button">Use folder</button>
+        </div>
+        <div id="contractsDirStatus" class="status hidden" role="status"></div>
+
+        <label class="field-label stacked-label" for="contractSelect">Contract</label>
         <select id="contractSelect"></select>
         <p id="contractDescription" class="muted">Loading contracts…</p>
 
@@ -63,9 +70,10 @@
         <nav class="mode-tabs" aria-label="Studio mode">
           <button class="tab-button active" type="button" data-mode="llm">LLM API key mode</button>
           <button class="tab-button" type="button" data-mode="manual">Manual mode</button>
+          <button class="tab-button" type="button" data-mode="contract">New contract</button>
         </nav>
 
-        <nav class="operation-tabs" aria-label="JSON operation">
+        <nav id="operationTabs" class="operation-tabs" aria-label="JSON operation">
           <button class="operation-button active" type="button" data-operation="create">Create new JSON</button>
           <button class="operation-button" type="button" data-operation="edit">Edit existing JSON</button>
         </nav>
@@ -211,7 +219,7 @@
             </details>
           </section>
 
-          <section class="panel">
+          <section id="llmJsonPanel" class="panel">
             <div class="panel-title-row">
               <div>
                 <p class="step-label">LLM step 3</p>
@@ -247,6 +255,56 @@
 
             <ul id="llmValidationErrors" class="error-list"></ul>
             <pre id="llmPayload" class="code-block placeholder">Provider result, validation details, and edit diff when applicable will appear here.</pre>
+          </section>
+
+          <section id="newContractPanel" class="panel hidden">
+            <div class="panel-title-row">
+              <div>
+                <p class="step-label">New contract</p>
+                <h2>Generate a contract from an app behavior</h2>
+              </div>
+            </div>
+
+            <p class="muted">Describe the JSON behavior your app needs. Studio will generate a draft contract, validate it, and save it to <code>json-contracts/</code> after review.</p>
+
+            <div class="form-grid">
+              <div>
+                <label class="field-label" for="newContractName">Contract name</label>
+                <input id="newContractName" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="churn-risk" />
+              </div>
+              <div>
+                <label class="field-label" for="newContractFields">Desired output fields optional</label>
+                <input id="newContractFields" class="text-input" type="text" autocomplete="off" spellcheck="false" placeholder="intent, reason, urgency, followUpAction" />
+              </div>
+            </div>
+
+            <label class="field-label stacked-label" for="newContractDescription">What should this contract do?</label>
+            <textarea id="newContractDescription" class="text-area" spellcheck="false" placeholder="Convert customer cancellation emails into structured churn-risk records for a SaaS customer success team."></textarea>
+
+            <label class="field-label stacked-label" for="newContractExampleInput">Example input optional</label>
+            <textarea id="newContractExampleInput" class="text-area" spellcheck="false" placeholder="I need to cancel before my renewal next week. The product is too expensive and we barely use it anymore."></textarea>
+
+            <label class="field-label stacked-label" for="newContractContext">Extra context JSON optional</label>
+            <textarea id="newContractContext" class="text-area context-area" spellcheck="false" placeholder='{"industry":"saas","source":"support-email"}'></textarea>
+
+            <div class="button-row generate-row">
+              <button id="generateContractDraft" type="button" disabled>Generate contract</button>
+              <div id="contractDraftStatus" class="status inline-status hidden" role="status"></div>
+            </div>
+
+            <label class="field-label" for="contractDraftJson">Generated contract draft</label>
+            <textarea id="contractDraftJson" class="text-area json-area" spellcheck="false" placeholder="Generated contract JSON will appear here for review before saving."></textarea>
+
+            <div class="button-row">
+              <button id="validateContractDraft" class="secondary-button" type="button" disabled>Validate draft</button>
+              <button id="saveContractDraft" type="button" disabled>Save contract</button>
+              <label class="checkbox-field compact-checkbox" for="overwriteContractDraft">
+                <input id="overwriteContractDraft" type="checkbox" />
+                <span>Overwrite existing</span>
+              </label>
+            </div>
+
+            <pre id="contractDraftValidation" class="code-block placeholder">Draft validation and save results will appear here.</pre>
           </section>
         </section>
       </section>

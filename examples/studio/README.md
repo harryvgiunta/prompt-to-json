@@ -2,10 +2,11 @@
 
 A tiny local web UI for demonstrating the `prompt-to-json` MCP workflow.
 
-It has two tabs:
+It has three tabs:
 
-1. **LLM API key mode** — paste a provider key in the UI, or load one from `.env`, then generate, validate, and repair JSON locally.
+1. **LLM API key mode** — paste a provider key in the UI, or load one from `.env`, then generate, validate, edit, and repair JSON locally.
 2. **Manual mode** — no API key. Copy the contract payload into any model or agent, then paste the model's JSON back into the UI.
+3. **New contract** — generate a draft contract file from a natural-language app behavior, validate it, and save it into `json-contracts/`.
 
 Provider calls are demo-only Studio behavior. The production MCP stdio server still does not call LLMs and does not use API keys.
 
@@ -26,12 +27,12 @@ http://127.0.0.1:5177
 
 Then:
 
-1. Pick a contract.
-2. Choose **Create new JSON** or **Edit existing JSON**.
+1. Pick a contract, or click **New contract** to create one.
+2. Choose **Create new JSON** or **Edit existing JSON** when testing an existing contract.
 3. Use the default **LLM API key mode**, or switch to **Manual mode**.
-4. Generate or paste JSON.
+4. Generate or paste JSON, or generate a contract draft.
 5. Validate.
-6. Repair if needed.
+6. Repair or save if needed.
 
 Use a different port if needed:
 
@@ -44,6 +45,39 @@ On Windows PowerShell:
 ```powershell
 $env:STUDIO_PORT=8080; npm run studio
 ```
+
+## New contract mode
+
+Use **New contract** to turn an app behavior description into a contract file.
+
+Flow:
+
+1. Choose provider/model in the LLM config panel.
+2. Click **New contract**.
+3. Enter a contract name, behavior description, optional desired fields, example input, and context.
+4. Click **Generate contract**.
+5. Review the generated draft JSON.
+6. Click **Validate draft**.
+7. Click **Save contract**.
+
+Saving writes:
+
+```text
+json-contracts/{contractName}.json
+```
+
+Then Studio reloads contracts and selects the new contract for testing.
+
+Draft validation checks:
+
+- safe contract filename
+- no `version` field
+- contract shape
+- valid JSON Schema
+- generated examples include `input` and `output`
+- generated example outputs validate against the generated schema
+
+Studio refuses to overwrite an existing file unless **Overwrite existing** is checked.
 
 ## Extra context JSON
 
@@ -263,9 +297,18 @@ OPENROUTER_MODEL=openai/gpt-4.1-mini
 
 ## Try your own contracts
 
-The Studio reads the same contract folder as the MCP server. Add a new `.json` contract file to `json-contracts/`, then click **Reload** in the UI.
+The Studio reads the same contract folder as the MCP server.
 
-Or point the Studio at another folder:
+Fastest UI path:
+
+1. Paste a folder path into **Contract repository folder** in Step 1.
+2. Click **Use folder**.
+3. Add or generate contracts in that folder.
+4. Click **Reload contracts** when files change.
+
+This lets you point Studio at your app/tool's own contract repository without restarting.
+
+You can also set the folder before startup:
 
 ```bash
 PROMPT_TO_JSON_CONTRACTS_DIR=/path/to/contracts npm run studio
@@ -281,6 +324,8 @@ $env:PROMPT_TO_JSON_CONTRACTS_DIR="C:\path\to\contracts"; npm run studio
 
 The example server wraps the same tool handlers that the MCP stdio server exposes:
 
+- `GET /api/contracts-dir` → current contract repository folder
+- `POST /api/contracts-dir` → switch contract repository folder without restarting Studio
 - `GET /api/contracts` → `list_contracts`
 - `GET /api/contracts/:name` → `read_contract`
 - `POST /api/json-contract` → `get_json_contract`
@@ -297,5 +342,8 @@ The Studio also exposes demo-only LLM routes:
 - `POST /api/llm/generate` → get a JSON contract, including optional `context`, call the selected provider, parse output, then validate
 - `POST /api/llm/edit` → get an edit contract, including `currentJson` and optional `context`, call the selected provider, parse output, then validate
 - `POST /api/llm/repair` → get a repair contract, call the selected provider, parse output, then validate
+- `POST /api/contract-drafts/generate` → use the selected provider to draft a new contract
+- `POST /api/contract-drafts/validate` → validate a generated contract draft without saving
+- `POST /api/contract-drafts/save` → validate, write `json-contracts/{contractName}.json`, and reload contracts
 
 These HTTP endpoints are only for the demo Studio. The production MCP server remains the stdio server started by `prompt-to-json`.

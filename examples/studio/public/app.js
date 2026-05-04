@@ -1,9 +1,15 @@
 const elements = {
   modeTabs: [...document.querySelectorAll(".tab-button")],
+  operationTabs: document.querySelector("#operationTabs"),
   operationButtons: [...document.querySelectorAll(".operation-button")],
   manualModePanel: document.querySelector("#manualModePanel"),
   llmModePanel: document.querySelector("#llmModePanel"),
+  llmJsonPanel: document.querySelector("#llmJsonPanel"),
+  newContractPanel: document.querySelector("#newContractPanel"),
   contractSelect: document.querySelector("#contractSelect"),
+  contractsDirInput: document.querySelector("#contractsDirInput"),
+  applyContractsDir: document.querySelector("#applyContractsDir"),
+  contractsDirStatus: document.querySelector("#contractsDirStatus"),
   reloadContracts: document.querySelector("#reloadContracts"),
   contractDescription: document.querySelector("#contractDescription"),
   rulesList: document.querySelector("#rulesList"),
@@ -52,6 +58,18 @@ const elements = {
   llmOutputStatus: document.querySelector("#llmOutputStatus"),
   llmValidationErrors: document.querySelector("#llmValidationErrors"),
   llmPayload: document.querySelector("#llmPayload"),
+  newContractName: document.querySelector("#newContractName"),
+  newContractFields: document.querySelector("#newContractFields"),
+  newContractDescription: document.querySelector("#newContractDescription"),
+  newContractExampleInput: document.querySelector("#newContractExampleInput"),
+  newContractContext: document.querySelector("#newContractContext"),
+  generateContractDraft: document.querySelector("#generateContractDraft"),
+  contractDraftStatus: document.querySelector("#contractDraftStatus"),
+  contractDraftJson: document.querySelector("#contractDraftJson"),
+  validateContractDraft: document.querySelector("#validateContractDraft"),
+  saveContractDraft: document.querySelector("#saveContractDraft"),
+  overwriteContractDraft: document.querySelector("#overwriteContractDraft"),
+  contractDraftValidation: document.querySelector("#contractDraftValidation"),
   toast: document.querySelector("#toast")
 };
 
@@ -66,13 +84,15 @@ const state = {
   lastValidation: null,
   lastRepairContract: null,
   lastLlmValidation: null,
-  lastLlmResult: null
+  lastLlmResult: null,
+  lastContractDraftValidation: null
 };
 
 const progressTimers = new WeakMap();
 
 wireEvents();
 await loadLlmProviders();
+await loadContractsDirConfig();
 await loadContracts();
 
 function wireEvents() {
@@ -86,6 +106,10 @@ function wireEvents() {
 
   elements.reloadContracts.addEventListener("click", async () => {
     await reloadContracts();
+  });
+
+  elements.applyContractsDir.addEventListener("click", async () => {
+    await applyContractsDir();
   });
 
   elements.contractSelect.addEventListener("change", async () => {
@@ -164,12 +188,29 @@ function wireEvents() {
     });
   }
 
-  for (const input of [elements.sourceInput, elements.currentJsonInput, elements.llmSourceInput, elements.llmCurrentJsonInput, elements.llmJsonOutput]) {
+  for (const input of [
+    elements.sourceInput,
+    elements.currentJsonInput,
+    elements.llmSourceInput,
+    elements.llmCurrentJsonInput,
+    elements.llmJsonOutput,
+    elements.newContractName,
+    elements.newContractFields,
+    elements.newContractDescription,
+    elements.newContractExampleInput,
+    elements.newContractContext,
+    elements.contractDraftJson
+  ]) {
     input.addEventListener("input", () => {
       renderLlmConfigStatus();
       updateButtonState();
     });
   }
+
+  elements.contractDraftJson.addEventListener("input", () => {
+    state.lastContractDraftValidation = null;
+    updateButtonState();
+  });
 
   elements.llmSaveConfig.addEventListener("change", () => {
     if (!elements.llmSaveConfig.checked) elements.llmSaveAsDefault.checked = false;
@@ -208,6 +249,18 @@ function wireEvents() {
     const text = elements.llmJsonOutput.value.trim();
     if (text) await copyText(text, "Copied generated JSON.");
   });
+
+  elements.generateContractDraft.addEventListener("click", async () => {
+    await generateContractDraft();
+  });
+
+  elements.validateContractDraft.addEventListener("click", async () => {
+    await validateContractDraft();
+  });
+
+  elements.saveContractDraft.addEventListener("click", async () => {
+    await saveContractDraft();
+  });
 }
 
 function switchMode(mode) {
@@ -218,8 +271,12 @@ function switchMode(mode) {
     tab.classList.toggle("active", tab.dataset.mode === mode);
   }
 
+  const isContractMode = mode === "contract";
   elements.manualModePanel.classList.toggle("hidden", mode !== "manual");
-  elements.llmModePanel.classList.toggle("hidden", mode !== "llm");
+  elements.llmModePanel.classList.toggle("hidden", mode === "manual");
+  elements.llmJsonPanel.classList.toggle("hidden", mode !== "llm");
+  elements.newContractPanel.classList.toggle("hidden", !isContractMode);
+  elements.operationTabs.classList.toggle("hidden", isContractMode);
 
   if (mode === "llm" && !elements.llmSourceInput.value.trim() && elements.sourceInput.value.trim()) {
     elements.llmSourceInput.value = elements.sourceInput.value.trim();
@@ -363,6 +420,37 @@ function updateLlmBaseUrlPlaceholder(provider = selectedProvider()) {
   elements.llmBaseUrl.placeholder = provider.defaultBaseUrl
     ? `Default: ${provider.defaultBaseUrl}`
     : "Required for custom OpenAI-compatible providers, e.g. https://api.example.com/v1";
+}
+
+async function loadContractsDirConfig() {
+  try {
+    const config = await api("/api/contracts-dir");
+    elements.contractsDirInput.value = config.contractsDir ?? "";
+    setStatus(elements.contractsDirStatus, "info", `Using ${config.contractsDir}. Loaded contracts: ${(config.contracts ?? []).length}.`);
+  } catch (error) {
+    setStatus(elements.contractsDirStatus, "bad", messageFor(error));
+  }
+}
+
+async function applyContractsDir() {
+  const contractsDir = elements.contractsDirInput.value.trim();
+  if (!contractsDir) return setStatus(elements.contractsDirStatus, "bad", "Enter a contract repository folder.");
+
+  setStatus(elements.contractsDirStatus, "info", "Switching contract repository…");
+
+  try {
+    const result = await api("/api/contracts-dir", {
+      method: "POST",
+      body: { contractsDir }
+    });
+    elements.contractsDirInput.value = result.contractsDir ?? contractsDir;
+    setStatus(elements.contractsDirStatus, "good", `Using ${result.contractsDir}. Loaded ${result.loaded ?? 0} contract(s).`);
+    clearWorkspaceFields();
+    await loadContracts({ forceExampleValues: false });
+    toast("Contract repository switched.");
+  } catch (error) {
+    setStatus(elements.contractsDirStatus, "bad", messageFor(error));
+  }
 }
 
 function renderLlmConfigStatus() {
@@ -742,6 +830,129 @@ async function repairWithLlm() {
   }
 }
 
+async function generateContractDraft() {
+  const description = elements.newContractDescription.value.trim();
+  if (!description) return setStatus(elements.contractDraftStatus, "bad", "Describe the app behavior first.");
+
+  const context = parseContextFromTextarea(elements.newContractContext.value);
+  if (!context.ok) return setStatus(elements.contractDraftStatus, "bad", context.error);
+
+  const provider = selectedProvider();
+  if (!provider) return setStatus(elements.contractDraftStatus, "bad", "Choose an LLM provider first.");
+
+  const stopProgress = startTimedStatus(elements.contractDraftStatus, `Generating contract with ${provider.label}`);
+  state.lastContractDraftValidation = null;
+  elements.contractDraftValidation.classList.add("placeholder");
+  elements.contractDraftValidation.textContent = "Draft validation and save results will appear here.";
+
+  try {
+    const result = await api("/api/contract-drafts/generate", {
+      method: "POST",
+      body: {
+        ...selectedLlmRequestConfig(),
+        suggestedName: elements.newContractName.value.trim(),
+        description,
+        desiredFields: elements.newContractFields.value,
+        exampleInputs: elements.newContractExampleInput.value,
+        context: context.value
+      }
+    });
+
+    const elapsedSeconds = stopProgress();
+    if (result.draft) {
+      elements.contractDraftJson.value = pretty(result.draft);
+      if (result.draft.contractName) elements.newContractName.value = result.draft.contractName;
+    } else if (result.rawText) {
+      elements.contractDraftJson.value = result.rawText.trim();
+    }
+
+    state.lastContractDraftValidation = result.validation ?? null;
+    renderContractDraftValidation({
+      ...result,
+      elapsedSeconds
+    });
+
+    setStatus(
+      elements.contractDraftStatus,
+      result.validation?.valid ? "good" : "bad",
+      result.validation?.valid
+        ? withElapsedSeconds("Contract draft generated and validated.", elapsedSeconds)
+        : withElapsedSeconds("Contract draft generated but needs review.", elapsedSeconds)
+    );
+    updateButtonState();
+  } catch (error) {
+    stopProgress();
+    setStatus(elements.contractDraftStatus, "bad", messageFor(error));
+  }
+}
+
+async function validateContractDraft() {
+  const parsed = parseJsonFromTextarea(elements.contractDraftJson.value);
+  if (!parsed.ok) return setStatus(elements.contractDraftStatus, "bad", parsed.error);
+
+  setStatus(elements.contractDraftStatus, "info", "Validating draft…");
+
+  try {
+    const result = await api("/api/contract-drafts/validate", {
+      method: "POST",
+      body: parsed.value
+    });
+
+    state.lastContractDraftValidation = result.validation;
+    renderContractDraftValidation(result);
+    setStatus(
+      elements.contractDraftStatus,
+      result.validation.valid ? "good" : "bad",
+      result.validation.valid ? "Contract draft is valid and ready to save." : "Contract draft is invalid. Review validation details."
+    );
+    updateButtonState();
+  } catch (error) {
+    setStatus(elements.contractDraftStatus, "bad", messageFor(error));
+  }
+}
+
+async function saveContractDraft() {
+  const parsed = parseJsonFromTextarea(elements.contractDraftJson.value);
+  if (!parsed.ok) return setStatus(elements.contractDraftStatus, "bad", parsed.error);
+
+  setStatus(elements.contractDraftStatus, "info", "Saving contract…");
+
+  try {
+    const result = await api("/api/contract-drafts/save", {
+      method: "POST",
+      body: {
+        ...parsed.value,
+        overwrite: elements.overwriteContractDraft.checked
+      }
+    });
+
+    renderContractDraftValidation(result);
+    setStatus(elements.contractDraftStatus, "good", `Saved ${result.path}. Contracts reloaded.`);
+    toast(`Saved contract: ${result.contractName}`);
+
+    await loadContracts({ forceExampleValues: false });
+    elements.contractSelect.value = result.contractName;
+    await loadContractDetails(result.contractName, { clearWorkspace: true });
+    switchMode("llm");
+  } catch (error) {
+    setStatus(elements.contractDraftStatus, "bad", messageFor(error));
+  }
+}
+
+function renderContractDraftValidation(result) {
+  const display = {
+    ...(result.draft ? { draft: result.draft } : {}),
+    ...(result.saved !== undefined ? { saved: result.saved, contractName: result.contractName, path: result.path } : {}),
+    validation: result.validation,
+    ...(result.parseError ? { parseError: result.parseError } : {}),
+    ...(result.provider ? { provider: result.provider, model: result.model, thinking: result.thinking } : {}),
+    ...(result.elapsedSeconds ? { elapsedSeconds: result.elapsedSeconds } : {})
+  };
+
+  elements.contractDraftValidation.classList.remove("placeholder");
+  elements.contractDraftValidation.textContent = pretty(display);
+}
+
 function renderLlmResult(result, successPrefix) {
   state.lastLlmResult = result;
 
@@ -950,6 +1161,8 @@ function updateButtonState() {
   const hasLlmModel = Boolean(elements.llmModel.value.trim());
   const hasLlmInput = Boolean(elements.llmSourceInput.value.trim());
   const hasLlmJson = Boolean(elements.llmJsonOutput.value.trim());
+  const hasContractDraftDescription = Boolean(elements.newContractDescription.value.trim());
+  const hasContractDraft = Boolean(elements.contractDraftJson.value.trim());
 
   elements.buildContract.disabled = !hasContract || !canUseOperation || !hasManualCurrentJson;
   elements.validateJson.disabled = !hasContract;
@@ -963,6 +1176,9 @@ function updateButtonState() {
   elements.llmValidate.disabled = !hasContract || !hasLlmJson;
   elements.llmRepair.disabled = !hasContract || !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasFailedLlmValidation;
   elements.llmCopyJson.disabled = !hasLlmJson;
+  elements.generateContractDraft.disabled = !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasContractDraftDescription;
+  elements.validateContractDraft.disabled = !hasContractDraft;
+  elements.saveContractDraft.disabled = !hasContractDraft || state.lastContractDraftValidation?.valid !== true;
 }
 
 function selectedContractName() {

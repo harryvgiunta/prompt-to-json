@@ -150,6 +150,13 @@ h2 {
 .operation-tabs {
   border: 1px solid var(--border);
   display: grid;
+}
+
+.mode-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.operation-tabs {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -269,6 +276,11 @@ h2 {
   font-weight: 400;
 }
 
+.compact-checkbox {
+  align-self: center;
+  margin: 0;
+}
+
 .panel-title-row {
   align-items: flex-start;
   display: flex;
@@ -349,6 +361,10 @@ select {
 
 .quick-actions button {
   flex: 1 1 9rem;
+}
+
+.compact-row {
+  margin: 0.5rem 0 0.75rem;
 }
 
 summary {
