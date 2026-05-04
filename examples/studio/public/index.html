@@ -121,22 +121,72 @@
             <label class="field-label" for="contractSelect">Contract</label>
             <select id="contractSelect"></select>
             <p id="contractDescription" class="muted">Loading contracts…</p>
+            <div id="schemaSummaryCards" class="schema-summary-cards" aria-label="Schema summary"></div>
             <div id="contractStatus" class="status hidden" role="status"></div>
 
-            <div class="quick-actions" aria-label="Example actions">
-              <button id="useExampleInput" class="secondary-button" type="button">Use example input</button>
-              <button id="useExampleOutput" class="secondary-button" type="button">Use example JSON</button>
-              <button id="useInvalidExample" class="secondary-button" type="button">Use invalid JSON</button>
-            </div>
-
-            <details open>
+            <details class="rules-details">
               <summary>Rules</summary>
-              <ul id="rulesList" class="rules-list"></ul>
+              <div class="rules-editor-shell">
+                <div class="rules-toolbar" aria-label="Rule actions">
+                  <button id="editRules" class="secondary-button" type="button" aria-pressed="false">Edit rules</button>
+                  <button id="saveRules" type="button" disabled>Save rules</button>
+                  <button id="cancelRulesEdit" class="secondary-button hidden" type="button">Cancel</button>
+                </div>
+                <ul id="rulesList" class="rules-list"></ul>
+                <div id="rulesEditPanel" class="rules-edit-panel hidden">
+                  <p class="schema-edit-warning">Warning: editing will permanently change the contract file when you save.</p>
+                  <label class="field-label" for="rulesEditor">Editable rules, one per line</label>
+                  <textarea id="rulesEditor" class="text-area rules-editor" spellcheck="true" placeholder="One rule per line"></textarea>
+                  <p class="muted small-copy">Rules guide the model in addition to the schema. Keep them specific and testable.</p>
+                </div>
+                <div id="rulesEditStatus" class="status hidden" role="status"></div>
+              </div>
             </details>
 
-            <details>
-              <summary>Schema</summary>
-              <pre id="schemaPreview" class="code-block small"></pre>
+            <details class="schema-explorer-details">
+              <summary>Schema Explorer</summary>
+              <div class="schema-explorer">
+                <div class="schema-view-toolbar" aria-label="Schema view actions">
+                  <button id="schemaViewToggle" class="secondary-button" type="button" aria-pressed="false">View raw JSON</button>
+                  <button id="editSchema" class="secondary-button" type="button" aria-pressed="false">Edit schema</button>
+                  <button id="saveSchemaEdit" type="button" disabled>Save schema</button>
+                  <button id="copySchemaJson" class="secondary-button" type="button">Copy schema</button>
+                </div>
+
+                <div id="schemaExplorerView" class="schema-view">
+                  <label class="field-label" for="schemaSearchInput">Search fields, paths, types, or enum values</label>
+                  <input id="schemaSearchInput" class="text-input" type="search" autocomplete="off" spellcheck="false" placeholder="Example: severity, required, date-time, enum" />
+
+                  <div class="schema-toolbar" aria-label="Schema explorer actions">
+                    <button id="expandSchemaTree" class="secondary-button" type="button">Expand all</button>
+                    <button id="collapseSchemaTree" class="secondary-button" type="button">Collapse all</button>
+                  </div>
+
+                  <div id="schemaRootActions" class="schema-root-actions hidden" aria-label="Root schema edit actions">
+                    <span>Root</span>
+                    <button id="addSchemaField" class="schema-icon-button" type="button" title="Add root key" aria-label="Add root key">+ key</button>
+                    <button id="addSchemaSection" class="schema-icon-button" type="button" title="Add root section" aria-label="Add root section">+ section</button>
+                  </div>
+
+                  <div id="schemaTree" class="schema-tree" aria-label="Schema field tree"></div>
+                  <p id="schemaEmptyState" class="muted schema-empty hidden">No schema fields match your search.</p>
+                </div>
+
+                <div id="schemaRawView" class="schema-view schema-raw-view hidden">
+                  <pre id="schemaPreview" class="code-block schema-raw"></pre>
+                </div>
+
+                <div id="schemaEditView" class="schema-view schema-edit-view hidden">
+                  <p class="schema-edit-warning">Warning: editing will permanently change the contract file when you save.</p>
+                  <label class="field-label" for="schemaEditor">Editable JSON Schema</label>
+                  <textarea id="schemaEditor" class="text-area json-area schema-editor" spellcheck="false"></textarea>
+                  <div class="schema-edit-actions">
+                    <button id="cancelSchemaEdit" class="secondary-button" type="button">Discard changes</button>
+                  </div>
+                </div>
+
+                <div id="schemaEditStatus" class="status hidden" role="status"></div>
+              </div>
             </details>
 
             <details>

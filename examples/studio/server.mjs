@@ -601,6 +601,24 @@ async function handleApiRequest(request, response, url) {
     return true;
   }
 
+  if (method === "POST" && pathname.startsWith("/api/contracts/") && pathname.endsWith("/schema")) {
+    const prefix = "/api/contracts/";
+    const suffix = "/schema";
+    const contract = decodePathSegment(pathname.slice(prefix.length, -suffix.length));
+    const body = await readJsonBody(request);
+    sendJson(response, 200, await saveContractSchemaRequest(contract, body));
+    return true;
+  }
+
+  if (method === "POST" && pathname.startsWith("/api/contracts/") && pathname.endsWith("/rules")) {
+    const prefix = "/api/contracts/";
+    const suffix = "/rules";
+    const contract = decodePathSegment(pathname.slice(prefix.length, -suffix.length));
+    const body = await readJsonBody(request);
+    sendJson(response, 200, await saveContractRulesRequest(contract, body));
+    return true;
+  }
+
   if (method === "GET" && (pathname === "/api/llm/providers" || pathname === "/api/llm/config")) {
     sendJson(response, 200, publicLlmConfig());
     return true;
@@ -815,6 +833,94 @@ async function saveContractDraftRequest(input) {
     validation,
     reload
   };
+}
+
+async function saveContractSchemaRequest(contractNameInput, input) {
+  const contractName = requiredString(contractNameInput, "contract");
+  if (!isSafeContractName(contractName)) {
+    throw httpError(400, `Invalid contract name: ${contractName}`);
+  }
+
+  if (!isPlainObject(input) || !isPlainObject(input.schema)) {
+    throw httpError(400, "schema must be a JSON object.");
+  }
+
+  const { contract, filePath } = await readContractFileForEdit(contractName);
+  contract.schema = input.schema;
+  const validation = validateContractDraftValue({ contractName, contract });
+  if (!validation.valid) {
+    throw httpError(400, `Edited schema is invalid for this contract: ${validation.errors.join("; ")}`);
+  }
+
+  await writeFile(filePath, `${JSON.stringify(contract, null, 2)}\n`, "utf8");
+  const reload = await handlers.reload_contracts({});
+
+  return {
+    saved: true,
+    contractName,
+    path: path.relative(process.cwd(), filePath),
+    schema: contract.schema,
+    validation,
+    reload
+  };
+}
+
+async function saveContractRulesRequest(contractNameInput, input) {
+  const contractName = requiredString(contractNameInput, "contract");
+  if (!isSafeContractName(contractName)) {
+    throw httpError(400, `Invalid contract name: ${contractName}`);
+  }
+
+  if (!isPlainObject(input) || !Array.isArray(input.rules) || !input.rules.every((rule) => typeof rule === "string")) {
+    throw httpError(400, "rules must be an array of strings.");
+  }
+
+  const rules = input.rules.map((rule) => rule.trim()).filter(Boolean);
+  const { contract, filePath } = await readContractFileForEdit(contractName);
+  contract.rules = rules;
+
+  const validation = validateContractDraftValue({ contractName, contract });
+  if (!validation.valid) {
+    throw httpError(400, `Edited rules are invalid for this contract: ${validation.errors.join("; ")}`);
+  }
+
+  await writeFile(filePath, `${JSON.stringify(contract, null, 2)}\n`, "utf8");
+  const reload = await handlers.reload_contracts({});
+
+  return {
+    saved: true,
+    contractName,
+    path: path.relative(process.cwd(), filePath),
+    rules: contract.rules,
+    validation,
+    reload
+  };
+}
+
+async function readContractFileForEdit(contractName) {
+  const filePath = contractDraftPath(contractName);
+  let currentText;
+  try {
+    currentText = await readFile(filePath, "utf8");
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      throw httpError(404, `Contract file not found: ${contractName}.`);
+    }
+    throw error;
+  }
+
+  let contract;
+  try {
+    contract = JSON.parse(currentText);
+  } catch (error) {
+    throw httpError(400, `Contract file is not valid JSON: ${messageFor(error)}`);
+  }
+
+  if (!isPlainObject(contract)) {
+    throw httpError(400, "Contract file must contain a JSON object.");
+  }
+
+  return { contract, filePath };
 }
 
 function normalizeContractDraftInput(input) {

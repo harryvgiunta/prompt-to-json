@@ -19,11 +19,33 @@ const elements = {
   contractDescription: document.querySelector("#contractDescription"),
   contractStatus: document.querySelector("#contractStatus"),
   rulesList: document.querySelector("#rulesList"),
+  editRules: document.querySelector("#editRules"),
+  saveRules: document.querySelector("#saveRules"),
+  cancelRulesEdit: document.querySelector("#cancelRulesEdit"),
+  rulesEditPanel: document.querySelector("#rulesEditPanel"),
+  rulesEditor: document.querySelector("#rulesEditor"),
+  rulesEditStatus: document.querySelector("#rulesEditStatus"),
+  schemaViewToggle: document.querySelector("#schemaViewToggle"),
+  editSchema: document.querySelector("#editSchema"),
+  addSchemaField: document.querySelector("#addSchemaField"),
+  addSchemaSection: document.querySelector("#addSchemaSection"),
+  schemaRootActions: document.querySelector("#schemaRootActions"),
+  schemaExplorerView: document.querySelector("#schemaExplorerView"),
+  schemaRawView: document.querySelector("#schemaRawView"),
+  schemaEditView: document.querySelector("#schemaEditView"),
+  schemaEditor: document.querySelector("#schemaEditor"),
+  saveSchemaEdit: document.querySelector("#saveSchemaEdit"),
+  cancelSchemaEdit: document.querySelector("#cancelSchemaEdit"),
+  schemaEditStatus: document.querySelector("#schemaEditStatus"),
+  schemaSearchInput: document.querySelector("#schemaSearchInput"),
+  schemaSummaryCards: document.querySelector("#schemaSummaryCards"),
+  expandSchemaTree: document.querySelector("#expandSchemaTree"),
+  collapseSchemaTree: document.querySelector("#collapseSchemaTree"),
+  copySchemaJson: document.querySelector("#copySchemaJson"),
+  schemaTree: document.querySelector("#schemaTree"),
+  schemaEmptyState: document.querySelector("#schemaEmptyState"),
   schemaPreview: document.querySelector("#schemaPreview"),
   examplesPreview: document.querySelector("#examplesPreview"),
-  useExampleInput: document.querySelector("#useExampleInput"),
-  useExampleOutput: document.querySelector("#useExampleOutput"),
-  useInvalidExample: document.querySelector("#useInvalidExample"),
   llmProvider: document.querySelector("#llmProvider"),
   llmModel: document.querySelector("#llmModel"),
   llmThinking: document.querySelector("#llmThinking"),
@@ -69,6 +91,11 @@ const state = {
   llmConfig: null,
   providers: [],
   configSidebarOpen: true,
+  originalSchemaJson: null,
+  schemaDraftJson: null,
+  schemaExplorerEditing: false,
+  originalRules: [],
+  rulesEditing: false,
   lastLlmValidation: null,
   lastLlmResult: null,
   lastContractDraftValidation: null
@@ -118,38 +145,75 @@ function wireEvents() {
     await loadContractDetails(elements.contractSelect.value, { clearWorkspace: true });
   });
 
-  elements.useExampleInput.addEventListener("click", () => {
-    const example = state.operation === "edit" ? firstEditExample() : firstExample();
-    if (!example || example.input === undefined) return toast("No example input for this contract.");
-
-    const text = formatInputValue(example.input);
-    elements.llmSourceInput.value = text;
-
-    if (state.operation === "edit" && example.currentJson !== undefined) {
-      elements.llmCurrentJsonInput.value = pretty(example.currentJson);
-    }
-
-    clearLlmValidationState();
-    updateButtonState();
+  elements.editRules.addEventListener("click", () => {
+    setRulesEditing(!state.rulesEditing);
   });
 
-  elements.useExampleOutput.addEventListener("click", () => {
-    const example = state.operation === "edit" ? firstEditExample() ?? firstExample() : firstExample();
-    const value = example?.output ?? example?.currentJson;
-    if (value === undefined) return toast("No example JSON for this contract.");
-
-    const json = pretty(value);
-    elements.llmJsonOutput.value = json;
-    elements.llmCurrentJsonInput.value = json;
-    clearLlmValidationState();
+  elements.rulesEditor.addEventListener("input", () => {
+    updateRulesSaveState();
+    hideStatus(elements.rulesEditStatus);
   });
 
-  elements.useInvalidExample.addEventListener("click", () => {
-    const json = pretty(makeInvalidExample());
-    elements.llmJsonOutput.value = json;
-    elements.llmCurrentJsonInput.value = json;
-    clearLlmValidationState();
-    toast("Inserted an intentionally invalid JSON sample.");
+  elements.saveRules.addEventListener("click", async () => {
+    await saveRulesEdit();
+  });
+
+  elements.cancelRulesEdit.addEventListener("click", () => {
+    cancelRulesEdit();
+  });
+
+  elements.schemaViewToggle.addEventListener("click", () => {
+    const shouldShowRaw = !elements.schemaExplorerView.classList.contains("hidden");
+    setSchemaView(shouldShowRaw ? "raw" : "explorer");
+  });
+
+  elements.editSchema.addEventListener("click", () => {
+    setSchemaExplorerEditing(!state.schemaExplorerEditing);
+  });
+
+  elements.addSchemaField.addEventListener("click", () => {
+    addSchemaPropertyAtPath("/", { section: false });
+  });
+
+  elements.addSchemaSection.addEventListener("click", () => {
+    addSchemaPropertyAtPath("/", { section: true });
+  });
+
+  elements.schemaEditor.addEventListener("input", () => {
+    syncSchemaDraftFromEditor();
+    updateSchemaEditButtonState();
+    hideStatus(elements.schemaEditStatus);
+  });
+
+  elements.schemaEditor.addEventListener("blur", () => {
+    syncSchemaDraftFromEditor();
+  });
+
+  elements.saveSchemaEdit.addEventListener("click", async () => {
+    await saveSchemaEdit();
+  });
+
+  elements.cancelSchemaEdit.addEventListener("click", () => {
+    cancelSchemaEdit();
+  });
+
+  elements.schemaSearchInput.addEventListener("input", () => {
+    filterSchemaTree();
+  });
+
+  elements.expandSchemaTree.addEventListener("click", () => {
+    setSchemaTreeExpanded(true);
+  });
+
+  elements.collapseSchemaTree.addEventListener("click", () => {
+    setSchemaTreeExpanded(false);
+  });
+
+  elements.copySchemaJson.addEventListener("click", async () => {
+    const text = elements.schemaEditView.classList.contains("hidden")
+      ? elements.schemaPreview.textContent.trim()
+      : elements.schemaEditor.value.trim();
+    if (text) await copyText(text, "Copied JSON Schema.");
   });
 
   elements.llmProvider.addEventListener("change", () => {
@@ -708,21 +772,22 @@ async function loadContractDetails(contractName, options = {}) {
 function renderContractDetails(contract, options = {}) {
   const { forceExampleValues = false, prefillExamples = true } = options;
   elements.contractDescription.textContent = contract.description || "No description provided.";
-  elements.rulesList.innerHTML = "";
+  state.originalRules = normalizeRules(contract.rules ?? []);
+  renderRules(state.originalRules);
+  elements.rulesEditor.value = formatRulesForEditor(state.originalRules);
+  hideStatus(elements.rulesEditStatus);
+  setRulesEditing(false);
 
-  if (contract.rules?.length) {
-    for (const rule of contract.rules) {
-      const item = document.createElement("li");
-      item.textContent = rule;
-      elements.rulesList.append(item);
-    }
-  } else {
-    const item = document.createElement("li");
-    item.textContent = "No extra rules.";
-    elements.rulesList.append(item);
-  }
-
-  elements.schemaPreview.textContent = pretty(contract.schema ?? {});
+  state.originalSchemaJson = cloneJson(contract.schema ?? {});
+  state.schemaDraftJson = cloneJson(state.originalSchemaJson);
+  elements.schemaPreview.textContent = pretty(state.schemaDraftJson);
+  elements.schemaEditor.value = pretty(state.schemaDraftJson);
+  elements.schemaSearchInput.value = "";
+  hideStatus(elements.schemaEditStatus);
+  setSchemaExplorerEditing(false, { render: false });
+  updateSchemaEditButtonState();
+  setSchemaView("explorer");
+  renderSchemaExplorer(state.originalSchemaJson);
   elements.examplesPreview.textContent = pretty({
     create: contract.examples ?? [],
     edit: contract.operations?.edit?.examples ?? []
@@ -753,6 +818,760 @@ function renderContractDetails(contract, options = {}) {
 
   updateOperationUi();
   updateButtonState();
+}
+
+function renderRules(rules) {
+  elements.rulesList.innerHTML = "";
+
+  if (rules.length) {
+    for (const rule of rules) {
+      const item = document.createElement("li");
+      item.textContent = rule;
+      elements.rulesList.append(item);
+    }
+  } else {
+    const item = document.createElement("li");
+    item.textContent = "No extra rules.";
+    elements.rulesList.append(item);
+  }
+}
+
+function setRulesEditing(enabled) {
+  state.rulesEditing = enabled;
+  elements.rulesEditPanel.classList.toggle("hidden", !enabled);
+  elements.cancelRulesEdit.classList.toggle("hidden", !enabled);
+  elements.rulesList.classList.toggle("hidden", enabled);
+  elements.editRules.textContent = enabled ? "Done editing" : "Edit rules";
+  elements.editRules.setAttribute("aria-pressed", String(enabled));
+
+  if (enabled) {
+    elements.rulesEditor.focus();
+  } else {
+    const parsed = parseRulesEditor();
+    renderRules(parsed.ok ? parsed.value : state.originalRules);
+  }
+
+  updateRulesSaveState();
+}
+
+function cancelRulesEdit() {
+  elements.rulesEditor.value = formatRulesForEditor(state.originalRules);
+  hideStatus(elements.rulesEditStatus);
+  setRulesEditing(false);
+  toast("Discarded rule changes.");
+}
+
+function updateRulesSaveState() {
+  elements.saveRules.disabled = rulesEditorIsIdentical();
+}
+
+function rulesEditorIsIdentical() {
+  const parsed = parseRulesEditor();
+  if (!parsed.ok) return false;
+  return canonicalJson(parsed.value) === canonicalJson(state.originalRules);
+}
+
+function parseRulesEditor() {
+  const rules = normalizeRules(elements.rulesEditor.value.split(/\r?\n/));
+  return { ok: true, value: rules };
+}
+
+function normalizeRules(value) {
+  return Array.isArray(value)
+    ? value.map((rule) => String(rule).trim()).filter(Boolean)
+    : [];
+}
+
+function formatRulesForEditor(rules) {
+  return normalizeRules(rules).join("\n");
+}
+
+async function saveRulesEdit() {
+  if (rulesEditorIsIdentical()) {
+    updateRulesSaveState();
+    return;
+  }
+
+  const parsed = parseRulesEditor();
+  if (!parsed.ok) return setStatus(elements.rulesEditStatus, "bad", parsed.error);
+
+  const confirmed = confirm("Warning, editing rules will permanently change the file. Continue?");
+  if (!confirmed) return;
+
+  const contract = selectedContractName();
+  if (!contract) return setStatus(elements.rulesEditStatus, "bad", "Select a contract first.");
+
+  setStatus(elements.rulesEditStatus, "info", "Saving rules to contract file…");
+
+  try {
+    const result = await api(`/api/contracts/${encodeURIComponent(contract)}/rules`, {
+      method: "POST",
+      body: { rules: parsed.value }
+    });
+
+    state.originalRules = normalizeRules(result.rules);
+    if (state.currentContract) state.currentContract.rules = state.originalRules;
+    elements.rulesEditor.value = formatRulesForEditor(state.originalRules);
+    renderRules(state.originalRules);
+    updateRulesSaveState();
+    setRulesEditing(false);
+    setStatus(elements.rulesEditStatus, "good", `Saved rules to ${result.path}. Contracts reloaded.`);
+    toast("Rules saved to contract file.");
+  } catch (error) {
+    setStatus(elements.rulesEditStatus, "bad", messageFor(error));
+  }
+}
+
+function setSchemaView(view) {
+  const showRaw = view === "raw";
+  const showEdit = view === "edit";
+  elements.schemaExplorerView.classList.toggle("hidden", showRaw || showEdit);
+  elements.schemaRawView.classList.toggle("hidden", !showRaw);
+  elements.schemaEditView.classList.toggle("hidden", !showEdit);
+  elements.schemaViewToggle.textContent = showRaw ? "View explorer" : "View raw JSON";
+  elements.schemaViewToggle.disabled = showEdit;
+  elements.schemaViewToggle.setAttribute("aria-pressed", String(showRaw));
+  elements.schemaViewToggle.setAttribute("aria-label", showRaw ? "View schema explorer" : "View raw JSON Schema");
+  elements.editSchema.disabled = showEdit;
+  elements.editSchema.textContent = state.schemaExplorerEditing ? "Done editing" : "Edit schema";
+  elements.editSchema.setAttribute("aria-pressed", String(state.schemaExplorerEditing));
+  elements.schemaRootActions.classList.toggle("hidden", !state.schemaExplorerEditing || showRaw || showEdit);
+}
+
+function setSchemaExplorerEditing(enabled, options = {}) {
+  state.schemaExplorerEditing = enabled;
+  elements.contractPanel.classList.toggle("schema-editing", enabled);
+  elements.editSchema.textContent = enabled ? "Done editing" : "Edit schema";
+  elements.editSchema.setAttribute("aria-pressed", String(enabled));
+  elements.schemaRootActions.classList.toggle("hidden", !enabled || elements.schemaExplorerView.classList.contains("hidden"));
+  if (enabled) setSchemaView("explorer");
+  if (options.render !== false) renderSchemaExplorer(currentSchemaDraft());
+}
+
+function enterSchemaEditMode() {
+  elements.schemaEditor.value = pretty(currentSchemaDraft());
+  hideStatus(elements.schemaEditStatus);
+  updateSchemaEditButtonState();
+  setSchemaView("edit");
+  elements.schemaEditor.focus();
+}
+
+function cancelSchemaEdit() {
+  const original = cloneJson(state.originalSchemaJson ?? {});
+  applySchemaDraft(original, { quiet: true });
+  hideStatus(elements.schemaEditStatus);
+  setSchemaView("explorer");
+  toast("Discarded schema changes.");
+}
+
+function syncSchemaDraftFromEditor() {
+  const parsed = parseSchemaEditorJson();
+  if (!parsed.ok) return;
+
+  state.schemaDraftJson = cloneJson(parsed.value);
+  elements.schemaPreview.textContent = pretty(parsed.value);
+  renderSchemaExplorer(parsed.value);
+  updateSchemaEditButtonState();
+}
+
+function applySchemaDraft(schema, options = {}) {
+  state.schemaDraftJson = cloneJson(schema);
+  elements.schemaPreview.textContent = pretty(state.schemaDraftJson);
+  elements.schemaEditor.value = pretty(state.schemaDraftJson);
+  renderSchemaExplorer(state.schemaDraftJson);
+  updateSchemaEditButtonState();
+
+  if (!options.quiet && options.message) {
+    toast(options.message);
+  }
+}
+
+function currentSchemaDraft() {
+  return cloneJson(state.schemaDraftJson ?? state.originalSchemaJson ?? {});
+}
+
+function updateSchemaEditButtonState() {
+  elements.saveSchemaEdit.disabled = schemaEditorIsIdentical();
+}
+
+function schemaEditorIsIdentical() {
+  const parsed = parseSchemaEditorJson();
+  if (!parsed.ok) return false;
+  return canonicalJson(parsed.value) === canonicalJson(state.originalSchemaJson ?? {});
+}
+
+function parseSchemaEditorJson() {
+  const text = elements.schemaEditor.value.trim();
+  if (!text) return { ok: false, error: "Schema JSON cannot be empty." };
+
+  try {
+    const value = JSON.parse(text);
+    if (!isPlainObject(value)) return { ok: false, error: "Schema must be a JSON object." };
+    return { ok: true, value };
+  } catch (error) {
+    return { ok: false, error: `Invalid schema JSON: ${messageFor(error)}` };
+  }
+}
+
+async function saveSchemaEdit() {
+  if (schemaEditorIsIdentical()) {
+    updateSchemaEditButtonState();
+    return;
+  }
+
+  const parsed = parseSchemaEditorJson();
+  if (!parsed.ok) return setStatus(elements.schemaEditStatus, "bad", parsed.error);
+
+  const confirmed = confirm("Warning, editing will permanently change the file. Continue?");
+  if (!confirmed) return;
+
+  const contract = selectedContractName();
+  if (!contract) return setStatus(elements.schemaEditStatus, "bad", "Select a contract first.");
+
+  setStatus(elements.schemaEditStatus, "info", "Saving schema to contract file…");
+
+  try {
+    const result = await api(`/api/contracts/${encodeURIComponent(contract)}/schema`, {
+      method: "POST",
+      body: { schema: parsed.value }
+    });
+
+    state.originalSchemaJson = cloneJson(result.schema);
+    state.schemaDraftJson = cloneJson(result.schema);
+    elements.schemaPreview.textContent = pretty(result.schema);
+    elements.schemaEditor.value = pretty(result.schema);
+    updateSchemaEditButtonState();
+    renderSchemaExplorer(result.schema);
+    setStatus(elements.schemaEditStatus, "good", `Saved schema to ${result.path}. Contracts reloaded.`);
+    toast("Schema saved to contract file.");
+
+    await loadContractDetails(result.contractName ?? contract, { clearWorkspace: false });
+    setSchemaView("explorer");
+  } catch (error) {
+    setStatus(elements.schemaEditStatus, "bad", messageFor(error));
+  }
+}
+
+function canonicalJson(value) {
+  return JSON.stringify(sortJsonKeys(value));
+}
+
+function sortJsonKeys(value) {
+  if (Array.isArray(value)) return value.map(sortJsonKeys);
+  if (!isPlainObject(value)) return value;
+
+  return Object.fromEntries(
+    Object.keys(value).sort().map((key) => [key, sortJsonKeys(value[key])])
+  );
+}
+
+function renderSchemaExplorer(schema) {
+  if (!elements.schemaTree) return;
+
+  const root = buildSchemaNode(schema ?? {}, {
+    name: "root",
+    path: "/",
+    required: false
+  });
+  const nodes = flattenSchemaNodes(root).filter((node) => node !== root);
+
+  renderSchemaSummary(schema ?? {}, nodes);
+  elements.schemaTree.innerHTML = "";
+
+  const nodesToRender = root.children.length ? root.children : [root];
+  for (const node of nodesToRender) {
+    elements.schemaTree.append(renderSchemaNodeElement(node, 0));
+  }
+
+  filterSchemaTree();
+}
+
+function renderSchemaSummary(schema, nodes) {
+  elements.schemaSummaryCards.innerHTML = "";
+
+  const cards = [
+    ["Fields", String(nodes.length)],
+    ["Required", String(nodes.filter((node) => node.required).length)],
+    ["Enums", String(nodes.filter((node) => node.enumValues.length || node.constValue !== undefined).length)],
+    ["Reject undeclared fields", additionalPropertiesLabel(schema)]
+  ];
+
+  for (const [label, value] of cards) {
+    const card = document.createElement("div");
+    card.className = "schema-summary-card";
+
+    const valueElement = document.createElement("strong");
+    valueElement.textContent = value;
+    const labelElement = document.createElement("span");
+    labelElement.textContent = label;
+
+    card.append(valueElement, labelElement);
+    elements.schemaSummaryCards.append(card);
+  }
+}
+
+function buildSchemaNode(schema, options) {
+  const { name, path, required } = options;
+  const normalizedSchema = isPlainObject(schema) ? schema : {};
+  const type = schemaDisplayType(normalizedSchema);
+  const node = {
+    name,
+    path,
+    required,
+    type,
+    format: normalizedSchema.format || "",
+    description: normalizedSchema.description || normalizedSchema.title || "",
+    enumValues: Array.isArray(normalizedSchema.enum) ? normalizedSchema.enum : [],
+    constValue: normalizedSchema.const,
+    additionalProperties: normalizedSchema.additionalProperties,
+    schema: normalizedSchema,
+    children: []
+  };
+
+  const properties = isPlainObject(normalizedSchema.properties) ? normalizedSchema.properties : {};
+  const requiredFields = Array.isArray(normalizedSchema.required) ? normalizedSchema.required : [];
+  for (const [propertyName, propertySchema] of Object.entries(properties)) {
+    node.children.push(buildSchemaNode(propertySchema, {
+      name: propertyName,
+      path: joinSchemaPath(path, propertyName),
+      required: requiredFields.includes(propertyName)
+    }));
+  }
+
+  if (normalizedSchema.items) {
+    node.children.push(buildSchemaNode(normalizedSchema.items, {
+      name: "items[]",
+      path: `${path === "/" ? "" : path}[]`,
+      required: false
+    }));
+  }
+
+  for (const keyword of ["oneOf", "anyOf", "allOf"]) {
+    if (!Array.isArray(normalizedSchema[keyword])) continue;
+    normalizedSchema[keyword].forEach((childSchema, index) => {
+      node.children.push(buildSchemaNode(childSchema, {
+        name: `${keyword}[${index + 1}]`,
+        path: `${path === "/" ? "" : path}/${keyword}/${index}`,
+        required: false
+      }));
+    });
+  }
+
+  return node;
+}
+
+function renderSchemaNodeElement(node, depth) {
+  const element = document.createElement("details");
+  element.className = "schema-node";
+  element.dataset.search = schemaNodeSearchText(node);
+  element.open = depth < 1;
+
+  const summary = document.createElement("summary");
+  summary.className = "schema-node-summary";
+  summary.style.setProperty("--schema-depth", String(depth));
+
+  const main = document.createElement("span");
+  main.className = "schema-node-main";
+
+  const name = document.createElement("span");
+  name.className = "schema-field-name";
+  name.textContent = node.name;
+
+  const path = document.createElement("span");
+  path.className = "schema-field-path";
+  path.textContent = node.path;
+
+  main.append(name, path);
+
+  const badges = document.createElement("span");
+  badges.className = "schema-badges";
+  badges.append(schemaBadge(node.type, "type"));
+  if (node.required) badges.append(schemaBadge("required", "required"));
+  if (node.format) badges.append(schemaBadge(node.format, "format"));
+  if (node.enumValues.length) badges.append(schemaBadge("enum", "enum"));
+  if (node.constValue !== undefined) badges.append(schemaBadge("const", "enum"));
+  if (node.children.length) badges.append(schemaBadge(`${node.children.length} child${node.children.length === 1 ? "" : "ren"}`, "children"));
+
+  const inlineActions = renderSchemaNodeInlineActions(node);
+  if (inlineActions) badges.append(inlineActions);
+
+  summary.append(main, badges);
+  element.append(summary);
+
+  const details = document.createElement("div");
+  details.className = "schema-node-details";
+  details.append(renderSchemaDetailRows(node));
+
+  if (node.children.length) {
+    const children = document.createElement("div");
+    children.className = "schema-children";
+    for (const child of node.children) {
+      children.append(renderSchemaNodeElement(child, depth + 1));
+    }
+    details.append(children);
+  }
+
+  element.append(details);
+  return element;
+}
+
+function renderSchemaNodeInlineActions(node) {
+  if (!state.schemaExplorerEditing) return null;
+
+  const canAddress = canAddressSchemaNode(node);
+  const canRename = canModifySchemaNode(node);
+  const canAddChildren = canAddress && schemaNodeCanHaveProperties(node);
+  if (!canRename && !canAddChildren) return null;
+
+  const actions = document.createElement("span");
+  actions.className = "schema-inline-actions";
+
+  if (canAddChildren) {
+    actions.append(
+      schemaIconButton("+ key", `Add child key inside ${node.name}`, () => addSchemaPropertyAtPath(node.path, { section: false })),
+      schemaIconButton("+ section", `Add child section inside ${node.name}`, () => addSchemaPropertyAtPath(node.path, { section: true }))
+    );
+  }
+
+  if (canRename) {
+    actions.append(
+      schemaIconButton("✎", `Rename ${node.name}`, () => renameSchemaPropertyAtPath(node.path)),
+      schemaIconButton("×", `Delete ${node.name}`, () => deleteSchemaPropertyAtPath(node.path), "danger")
+    );
+  }
+
+  return actions;
+}
+
+function schemaIconButton(text, label, onClick, kind = "") {
+  const button = document.createElement("button");
+  button.className = `schema-icon-button ${kind}`.trim();
+  button.type = "button";
+  button.textContent = text;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onClick();
+  });
+  return button;
+}
+
+function canAddressSchemaNode(node) {
+  return Boolean(node.path && !node.path.includes("[]") && !node.path.includes("/oneOf/") && !node.path.includes("/anyOf/") && !node.path.includes("/allOf/"));
+}
+
+function canModifySchemaNode(node) {
+  return canAddressSchemaNode(node) && node.path !== "/";
+}
+
+function schemaNodeCanHaveProperties(node) {
+  return node.schema?.type === "object" || isPlainObject(node.schema?.properties);
+}
+
+function addSchemaPropertyAtPath(parentPath, options = {}) {
+  const schema = getMutableSchemaDraft();
+  if (!schema) return;
+
+  const parentSchema = getSchemaAtDataPath(schema, parentPath);
+  if (!schemaCanHaveProperties(parentSchema)) {
+    return toast("Add keys only inside object schemas or sections.");
+  }
+
+  const key = promptForNewSchemaKey(parentSchema, options.section ? "New section key" : "New key");
+  if (!key) return;
+
+  const propertySchema = options.section
+    ? schemaForNewProperty("object")
+    : promptForNewPropertySchema();
+  if (!propertySchema) return;
+
+  parentSchema.properties ??= {};
+  parentSchema.properties[key] = propertySchema;
+  applySchemaDraft(schema, { message: `Added ${options.section ? "section" : "key"} ${key}.` });
+  hideStatus(elements.schemaEditStatus);
+}
+
+function renameSchemaPropertyAtPath(path) {
+  const schema = getMutableSchemaDraft();
+  if (!schema) return;
+
+  const target = getSchemaParentAndKey(schema, path);
+  if (!target) return toast("Could not find that schema key.");
+
+  const { parentSchema, key } = target;
+  const newKey = promptForNewSchemaKey(parentSchema, "Rename key", key);
+  if (!newKey || newKey === key) return;
+
+  parentSchema.properties[newKey] = parentSchema.properties[key];
+  delete parentSchema.properties[key];
+
+  if (Array.isArray(parentSchema.required)) {
+    parentSchema.required = parentSchema.required.map((requiredKey) => requiredKey === key ? newKey : requiredKey);
+  }
+
+  applySchemaDraft(schema, { message: `Renamed ${key} to ${newKey}.` });
+  hideStatus(elements.schemaEditStatus);
+}
+
+function deleteSchemaPropertyAtPath(path) {
+  const schema = getMutableSchemaDraft();
+  if (!schema) return;
+
+  const target = getSchemaParentAndKey(schema, path);
+  if (!target) return toast("Could not find that schema key.");
+
+  const { parentSchema, key } = target;
+  const confirmed = confirm(`Delete schema key "${key}"? This change is not written to disk until you click Save schema.`);
+  if (!confirmed) return;
+
+  delete parentSchema.properties[key];
+  if (Array.isArray(parentSchema.required)) {
+    parentSchema.required = parentSchema.required.filter((requiredKey) => requiredKey !== key);
+  }
+
+  applySchemaDraft(schema, { message: `Deleted key ${key}.` });
+  hideStatus(elements.schemaEditStatus);
+}
+
+function getMutableSchemaDraft() {
+  const parsed = parseSchemaEditorJson();
+  if (!parsed.ok) {
+    toast(parsed.error);
+    return null;
+  }
+  return cloneJson(parsed.value);
+}
+
+function promptForNewSchemaKey(parentSchema, label, currentValue = "") {
+  const raw = prompt(label, currentValue);
+  if (raw === null) return "";
+  const key = raw.trim();
+  if (!key) return "";
+
+  if (key.includes("/") || key.includes("~")) {
+    toast("Use a simple key without / or ~ characters.");
+    return "";
+  }
+
+  if (key !== currentValue && Object.prototype.hasOwnProperty.call(parentSchema.properties ?? {}, key)) {
+    toast(`Schema already has a key named ${key}.`);
+    return "";
+  }
+
+  return key;
+}
+
+function promptForNewPropertySchema() {
+  const type = prompt("Type for this key: string, number, integer, boolean, array, or object", "string");
+  if (type === null) return null;
+
+  const normalized = type.trim().toLowerCase();
+  const allowed = new Set(["string", "number", "integer", "boolean", "array", "object"]);
+  if (!allowed.has(normalized)) {
+    toast("Choose one of: string, number, integer, boolean, array, object.");
+    return null;
+  }
+
+  return schemaForNewProperty(normalized);
+}
+
+function schemaForNewProperty(type) {
+  if (type === "object") {
+    return {
+      type: "object",
+      additionalProperties: false,
+      properties: {},
+      required: []
+    };
+  }
+
+  if (type === "array") {
+    return {
+      type: "array",
+      items: { type: "string" },
+      default: []
+    };
+  }
+
+  return { type };
+}
+
+function getSchemaAtDataPath(schema, dataPath) {
+  const segments = parseSchemaDataPath(dataPath);
+  let current = schema;
+
+  for (const segment of segments) {
+    if (!isPlainObject(current?.properties) || !isPlainObject(current.properties[segment])) {
+      return null;
+    }
+    current = current.properties[segment];
+  }
+
+  return current;
+}
+
+function getSchemaParentAndKey(schema, dataPath) {
+  const segments = parseSchemaDataPath(dataPath);
+  if (segments.length === 0) return null;
+
+  const key = segments.at(-1);
+  const parentPath = segments.length === 1 ? "/" : `/${segments.slice(0, -1).map(escapeJsonPointerSegment).join("/")}`;
+  const parentSchema = getSchemaAtDataPath(schema, parentPath);
+  if (!schemaCanHaveProperties(parentSchema) || !Object.prototype.hasOwnProperty.call(parentSchema.properties ?? {}, key)) {
+    return null;
+  }
+
+  return { parentSchema, key };
+}
+
+function parseSchemaDataPath(dataPath) {
+  if (!dataPath || dataPath === "/") return [];
+  return dataPath.slice(1).split("/").map(unescapeJsonPointerSegment);
+}
+
+function schemaCanHaveProperties(schema) {
+  return isPlainObject(schema) && (schema.type === "object" || isPlainObject(schema.properties));
+}
+
+function renderSchemaDetailRows(node) {
+  const rows = document.createElement("div");
+  rows.className = "schema-detail-rows";
+
+  rows.append(schemaDetailRow("Path", node.path));
+  rows.append(schemaDetailRow("Type", node.type));
+  rows.append(schemaDetailRow("Required", node.required ? "yes" : "no"));
+  if (node.description) rows.append(schemaDetailRow("Description", node.description));
+  if (node.format) rows.append(schemaDetailRow("Format", node.format));
+  if (node.enumValues.length) rows.append(schemaDetailRow("Allowed values", node.enumValues.map(formatSchemaValue).join(", ")));
+  if (node.constValue !== undefined) rows.append(schemaDetailRow("Constant value", formatSchemaValue(node.constValue)));
+  if (node.additionalProperties !== undefined) rows.append(schemaDetailRow("Reject undeclared fields", additionalPropertiesLabel(node.schema)));
+  rows.append(schemaDetailRow("Example", formatSchemaValue(exampleValueForSchema(node.schema))));
+
+  return rows;
+}
+
+function schemaDetailRow(label, value) {
+  const row = document.createElement("div");
+  row.className = "schema-detail-row";
+
+  const labelElement = document.createElement("span");
+  labelElement.textContent = label;
+  const valueElement = document.createElement("code");
+  valueElement.textContent = value;
+
+  row.append(labelElement, valueElement);
+  return row;
+}
+
+function schemaBadge(text, kind) {
+  const badge = document.createElement("span");
+  badge.className = `schema-badge ${kind}`;
+  badge.textContent = text;
+  return badge;
+}
+
+function filterSchemaTree() {
+  const query = elements.schemaSearchInput.value.trim().toLowerCase();
+  const roots = [...elements.schemaTree.children].filter((child) => child.classList.contains("schema-node"));
+  let anyVisible = false;
+
+  for (const root of roots) {
+    anyVisible = filterSchemaNodeElement(root, query) || anyVisible;
+  }
+
+  elements.schemaEmptyState.classList.toggle("hidden", anyVisible || !query);
+}
+
+function filterSchemaNodeElement(element, query) {
+  const childrenContainer = element.querySelector(":scope > .schema-node-details > .schema-children");
+  const children = childrenContainer
+    ? [...childrenContainer.children].filter((child) => child.classList.contains("schema-node"))
+    : [];
+  const childMatches = children.map((child) => filterSchemaNodeElement(child, query));
+  const ownMatch = !query || element.dataset.search.includes(query);
+  const visible = ownMatch || childMatches.some(Boolean);
+
+  element.classList.toggle("hidden", !visible);
+  if (query && visible) element.open = true;
+
+  return visible;
+}
+
+function setSchemaTreeExpanded(expanded) {
+  for (const node of elements.schemaTree.querySelectorAll("details.schema-node")) {
+    node.open = expanded;
+  }
+}
+
+function flattenSchemaNodes(node) {
+  return [node, ...node.children.flatMap((child) => flattenSchemaNodes(child))];
+}
+
+function schemaNodeSearchText(node) {
+  return [
+    node.name,
+    node.path,
+    node.type,
+    node.required ? "required" : "optional",
+    node.format,
+    node.description,
+    node.enumValues.join(" "),
+    node.constValue !== undefined ? String(node.constValue) : ""
+  ].join(" ").toLowerCase();
+}
+
+function schemaDisplayType(schema) {
+  if (Array.isArray(schema.enum)) return "enum";
+  if (schema.const !== undefined) return "const";
+  if (Array.isArray(schema.type)) return schema.type.join(" | ");
+  if (schema.type) return schema.type;
+  if (schema.properties) return "object";
+  if (schema.items) return "array";
+  if (schema.oneOf) return "oneOf";
+  if (schema.anyOf) return "anyOf";
+  if (schema.allOf) return "allOf";
+  return "any";
+}
+
+function joinSchemaPath(basePath, segment) {
+  const escaped = escapeJsonPointerSegment(segment);
+  return basePath === "/" ? `/${escaped}` : `${basePath}/${escaped}`;
+}
+
+function additionalPropertiesLabel(schema) {
+  if (!isPlainObject(schema) || schema.additionalProperties === undefined) return "unspecified";
+  if (schema.additionalProperties === false) return "blocked";
+  if (schema.additionalProperties === true) return "allowed";
+  return "custom schema";
+}
+
+function exampleValueForSchema(schema) {
+  if (!isPlainObject(schema)) return null;
+  if (schema.default !== undefined) return schema.default;
+  if (Array.isArray(schema.enum) && schema.enum.length) return schema.enum[0];
+  if (schema.const !== undefined) return schema.const;
+
+  const type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
+  if (type === "string") {
+    if (schema.format === "date-time") return "2026-05-04T10:30:00.000Z";
+    if (schema.format === "date") return "2026-05-04";
+    if (schema.format === "email") return "user@example.com";
+    if (schema.format === "uri" || schema.format === "url") return "https://example.com";
+    if (schema.format === "uuid") return "7b0f58e0-4c3d-4e13-9a3d-7ec7255e8d9f";
+    return "string";
+  }
+  if (type === "integer") return 0;
+  if (type === "number") return 0;
+  if (type === "boolean") return true;
+  if (type === "array") return [];
+  if (type === "object" || schema.properties) return {};
+  return null;
+}
+
+function formatSchemaValue(value) {
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 async function generateWithLlm() {
@@ -1148,9 +1967,6 @@ function updateButtonState() {
   const hasContractDraftDescription = Boolean(elements.newContractDescription.value.trim());
   const hasContractDraft = Boolean(elements.contractDraftJson.value.trim());
 
-  elements.useExampleInput.disabled = !hasContract;
-  elements.useExampleOutput.disabled = !hasContract;
-  elements.useInvalidExample.disabled = !hasContract;
   elements.llmGenerate.disabled = !hasContract || !canUseOperation || !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasLlmInput || !hasLlmCurrentJson;
   elements.llmValidate.disabled = !hasContract || !hasLlmJson;
   elements.llmRepair.disabled = !hasContract || !providerReady || !hasProviderBaseUrl || !hasLlmModel || !hasFailedLlmValidation;
@@ -1193,23 +2009,6 @@ function firstEditExample() {
 
 function editOperationEnabled() {
   return state.currentContract?.operations?.edit?.enabled !== false;
-}
-
-function makeInvalidExample() {
-  const example = firstExample();
-  const base = cloneJson(example?.output ?? {});
-
-  if (base !== null && typeof base === "object" && !Array.isArray(base)) {
-    return {
-      ...base,
-      __studio_extra_field: "This field should fail contracts with additionalProperties:false"
-    };
-  }
-
-  return {
-    value: base,
-    __studio_extra_field: "This field should usually fail object schemas"
-  };
 }
 
 function parseJsonFromTextarea(value) {
@@ -1346,6 +2145,10 @@ function isPlainObject(value) {
 
 function escapeJsonPointerSegment(value) {
   return String(value).replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+function unescapeJsonPointerSegment(value) {
+  return String(value).replace(/~1/g, "/").replace(/~0/g, "~");
 }
 
 function formatInputValue(value) {

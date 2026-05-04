@@ -79,6 +79,23 @@ Draft validation checks:
 
 Studio refuses to overwrite an existing file unless **Overwrite existing** is checked.
 
+## Schema Explorer
+
+Step 1 includes a **Schema Explorer** so users do not have to read a giant raw JSON Schema in a tiny box.
+
+The collapsed **Rules** section has an editor for changing contract rules and saving them back to the selected contract file. Rules are one per line, and Studio warns before permanently writing the file.
+
+Schema Explorer shows:
+
+- searchable field tree
+- field paths, types, required badges, formats, enum/const markers, and example values
+- summary cards for total fields, required fields, enums, and whether undeclared output fields are rejected
+- **Expand all**, **Collapse all**, and **Copy schema** actions
+- a **View raw JSON / View explorer** button that swaps between the friendly explorer and the full raw JSON Schema
+- edit-only **+ key** and **+ section** controls for adding top-level schema properties from the explorer
+- edit-only per-field **Rename key**, **Delete key**, **Add child key**, and **Add child section** actions for object fields/sections
+- an **Edit schema** button for editing the JSON Schema directly and saving it back to the selected contract file. The save button stays disabled while the edited schema is identical, and Studio warns that saving permanently changes the file.
+
 ## App context JSON
 
 The Generate JSON and New contract flows include an **App context optional** toolbox. Use it for generic app/system variables your app might already know, such as current date/time, created/updated timestamps, unique IDs, user, session, or workspace.
@@ -339,6 +356,8 @@ The example server exposes UI routes and wraps the same tool handlers that the M
 - `POST /api/contracts-dir` → switch contract repository folder without restarting Studio
 - `GET /api/contracts` → `list_contracts`
 - `GET /api/contracts/:name` → `read_contract`
+- `POST /api/contracts/:name/schema` → validate and save an edited schema back to the selected contract file, then reload contracts
+- `POST /api/contracts/:name/rules` → validate and save edited rules back to the selected contract file, then reload contracts
 - `POST /api/json-contract` → `get_json_contract`
 - `POST /api/edit-contract` → `get_edit_contract`
 - `POST /api/validate` → `validate_json`
