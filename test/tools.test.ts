@@ -231,14 +231,19 @@ describe("tool handlers", () => {
     });
 
     expect(result.contract).toBe("support-ticket");
-    expect(result.instructions).toEqual([
-      "Repair the JSON so it validates against the schema.",
-      "Return JSON only.",
-      "Do not return markdown.",
-      "Do not include commentary.",
-      "Do not include extra keys.",
-      "Preserve valid fields where possible."
-    ]);
+    expect(result.instructions).toEqual(
+      expect.arrayContaining([
+        "Repair the JSON so it validates against the schema.",
+        "Return JSON only.",
+        "Do not return markdown.",
+        "Do not include commentary.",
+        "Do not include extra keys.",
+        "Preserve valid fields where possible.",
+        "Set /severity to one of: low, medium, high, critical.",
+        "Add missing required field /summary.",
+        "Add missing required field /category."
+      ])
+    );
     expect(result.schema).toEqual(supportTicketContract.schema);
     expect(result.rules).toEqual(supportTicketContract.rules);
     expect(result.examples).toEqual(supportTicketContract.examples);

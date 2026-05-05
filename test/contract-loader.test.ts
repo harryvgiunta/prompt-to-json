@@ -153,6 +153,26 @@ describe("ContractStore", () => {
     await expect(store.reload()).rejects.toThrow(/Invalid JSON Schema/);
   });
 
+  it("rejects examples whose output does not validate against the contract schema", async () => {
+    await writeJson(dir, "bad-example.json", {
+      ...validSupportContract,
+      examples: [
+        {
+          input: "Urgent login issue",
+          output: {
+            summary: "Login issue",
+            severity: "urgent",
+            category: "authentication"
+          }
+        }
+      ]
+    });
+
+    const store = new ContractStore({ contractsDir: dir });
+
+    await expect(store.reload()).rejects.toThrow(/Example output at examples\[0\] does not validate/);
+  });
+
   it("rejects contracts with a version field", async () => {
     await writeJson(dir, "versioned.json", {
       ...validSupportContract,

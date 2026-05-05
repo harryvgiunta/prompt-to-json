@@ -21,7 +21,7 @@ import type {
   Logger,
   PublicContract
 } from "./types.js";
-import { validateJsonSchema } from "./validator.js";
+import { JsonValidator, validateJsonSchema } from "./validator.js";
 
 const noopLogger: Logger = {
   debug() {},
@@ -142,6 +142,35 @@ export function normalizeOperations(operations: unknown): ContractOperations {
   }
 
   return normalized as ContractOperations;
+}
+
+function formatValidationErrors(errors: Array<{ path: string; message: string; keyword: string }>): string {
+  if (!errors.length) return "unknown validation error";
+  return errors.map((error) => `${error.path || "/"}: ${error.message} (${error.keyword})`).join("; ");
+}
+
+function validateExampleOutputs(contract: LoadedContract): void {
+  const validator = new JsonValidator();
+  const exampleGroups: Array<{ label: string; examples: unknown[] }> = [
+    { label: "examples", examples: contract.examples },
+    ...Object.entries(contract.operations).map(([operationName, operation]) => ({
+      label: `operations.${operationName}.examples`,
+      examples: operation.examples
+    }))
+  ];
+
+  for (const group of exampleGroups) {
+    for (const [index, example] of group.examples.entries()) {
+      if (!isRecord(example) || !Object.prototype.hasOwnProperty.call(example, "output")) continue;
+
+      const validation = validator.validateAgainstContract(contract, example.output);
+      if (!validation.valid) {
+        throw new Error(
+          `Example output at ${group.label}[${index}] does not validate against contract schema: ${formatValidationErrors(validation.errors)}`
+        );
+      }
+    }
+  }
 }
 
 export class ContractStore extends EventEmitter {
@@ -403,7 +432,7 @@ export class ContractStore extends EventEmitter {
 
     validateJsonSchema(result.data.schema);
 
-    return {
+    const loadedContract: LoadedContract = {
       name: contractName,
       ...(result.data.description ? { description: result.data.description } : {}),
       rules,
@@ -412,5 +441,8 @@ export class ContractStore extends EventEmitter {
       examples,
       sourcePath: filePath
     };
+
+    validateExampleOutputs(loadedContract);
+    return loadedContract;
   }
 }

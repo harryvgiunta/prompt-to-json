@@ -102,7 +102,7 @@ export async function createPromptToJsonMcpServer(
 
   const validator = new JsonValidator();
   const toolHandlers = createToolHandlers(store, validator);
-  const promptHandlers = createPromptHandlers(store);
+  const promptHandlers = createPromptHandlers(store, validator);
 
   const server = new Server(
     {
@@ -139,7 +139,8 @@ export async function createPromptToJsonMcpServer(
     tools: toolDefinitions.map((tool) => ({
       name: tool.name,
       description: tool.description,
-      inputSchema: tool.inputSchema
+      inputSchema: tool.inputSchema,
+      outputSchema: tool.outputSchema
     }))
   }));
 

@@ -252,10 +252,10 @@ There is no manifest file and no manually maintained resources file. Git handles
 
 Rules:
 
-- `schema` is required.
+- `schema` is required and must be valid JSON Schema. Omit `$schema` for the default 2020-12 validator, or set `$schema` to draft-07 or 2020-12 explicitly.
 - `description` is optional but recommended.
 - `rules` is optional and defaults to `[]`.
-- `examples` is optional and defaults to `[]`.
+- `examples` is optional and defaults to `[]`. Example `output` values must validate against `schema`.
 - `operations` is optional and defaults to enabled `create` and `edit` operations. Operation metadata belongs at the top level, not inside the JSON Schema.
 - `name` is optional, but the filename is the source of truth.
 - A `version` field is rejected; use Git for versioning.
@@ -538,7 +538,7 @@ Output:
 }
 ```
 
-The agent/model uses this repair contract to produce corrected JSON. The MCP server does not repair by calling a model.
+The agent/model uses this repair contract to produce corrected JSON. The MCP server does not repair by calling a model. When validation errors are available, `instructions` also includes deterministic field-specific repair hints such as adding missing required fields, removing extra fields, or choosing allowed enum values.
 
 ### `reload_contracts`
 

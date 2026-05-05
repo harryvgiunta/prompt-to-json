@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { isSafeContractName } from "./security.js";
-import type { FormattedValidationError, JsonObject } from "./types.js";
+import type { FormattedValidationError, JsonObject, LoadedContract } from "./types.js";
 import type { ContractStore } from "./contract-loader.js";
+import { JsonValidator } from "./validator.js";
 import { renderEditContractPrompt, renderJsonContractPrompt, renderRepairContractPrompt } from "./prompt-renderer.js";
 
 const ContractNameSchema = z
@@ -130,21 +131,46 @@ function parseMaybeJson(value: unknown, fallback: unknown): unknown {
 }
 
 export function normalizePromptArguments(args: Record<string, unknown> | undefined): Record<string, unknown> {
-  const input = args ?? {};
-  return {
-    ...input,
-    context: parseMaybeJson(input.context, {}),
-    currentJson: parseMaybeJson(input.currentJson, undefined),
-    invalidJson: parseMaybeJson(input.invalidJson, undefined),
-    validationErrors: parseMaybeJson(input.validationErrors, [])
-  };
+  const input = { ...(args ?? {}) };
+
+  if (Object.prototype.hasOwnProperty.call(input, "context")) {
+    input.context = parseMaybeJson(input.context, {});
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "currentJson")) {
+    input.currentJson = parseMaybeJson(input.currentJson, undefined);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "invalidJson")) {
+    input.invalidJson = parseMaybeJson(input.invalidJson, undefined);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "validationErrors")) {
+    input.validationErrors = parseMaybeJson(input.validationErrors, []);
+  }
+
+  return input;
 }
 
-export function createPromptHandlers(store: ContractStore) {
+function requireOperation(contract: LoadedContract, operation: "create" | "edit") {
+  const config = contract.operations[operation];
+  if (!config || config.enabled === false) {
+    throw new Error(`Contract ${contract.name} does not enable the ${operation} operation.`);
+  }
+  return config;
+}
+
+function formatValidationErrors(errors: FormattedValidationError[]): string {
+  if (!errors.length) return "unknown validation error";
+  return errors.map((error) => `${error.path || "/"}: ${error.message} (${error.keyword})`).join("; ");
+}
+
+export function createPromptHandlers(store: ContractStore, validator = new JsonValidator()) {
   return {
     async json_contract_prompt(input: unknown): Promise<string> {
       const parsed = JsonContractPromptInputSchema.parse(input ?? {});
       const contract = store.getContract(parsed.contract);
+      requireOperation(contract, "create");
       return renderJsonContractPrompt({
         contract,
         input: parsed.input,
@@ -155,9 +181,18 @@ export function createPromptHandlers(store: ContractStore) {
     async edit_contract_prompt(input: unknown): Promise<string> {
       const parsed = EditContractPromptInputSchema.parse(input ?? {});
       const contract = store.getContract(parsed.contract);
-      if (contract.operations.edit.enabled === false) {
-        throw new Error(`Contract ${contract.name} does not enable the edit operation.`);
+      const editOperation = requireOperation(contract, "edit");
+      if (editOperation.return !== "full_object") {
+        throw new Error(`Contract ${contract.name} edit operation must return full_object for edit_contract_prompt.`);
       }
+
+      const currentValidation = validator.validateAgainstContract(contract, parsed.currentJson);
+      if (!currentValidation.valid) {
+        throw new Error(
+          `currentJson does not validate against contract ${contract.name}: ${formatValidationErrors(currentValidation.errors)}`
+        );
+      }
+
       return renderEditContractPrompt({
         contract,
         currentJson: parsed.currentJson,

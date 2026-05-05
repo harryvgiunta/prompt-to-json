@@ -1,17 +1,59 @@
+import type { ErrorObject, ValidateFunction } from "ajv";
+import { Ajv as AjvDraft7 } from "ajv/dist/ajv.js";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import type { ErrorObject, ValidateFunction } from "ajv";
 import type { FormattedValidationError, LoadedContract, ValidationResult } from "./types.js";
 
-function createAjv(): Ajv2020 {
-  const ajv = new Ajv2020({
-    allErrors: true,
-    strict: false,
-    allowUnionTypes: true,
-    addUsedSchema: false
-  });
-  (addFormats as unknown as (ajvInstance: Ajv2020) => void)(ajv);
+type SupportedJsonSchemaDialect = "draft-07" | "2020-12";
+
+type AjvLike = {
+  errors: ErrorObject[] | null | undefined;
+  validateSchema(schema: unknown): boolean;
+  errorsText(errors?: ErrorObject[] | null): string;
+  compile(schema: unknown): ValidateFunction;
+};
+
+const AJV_OPTIONS = {
+  allErrors: true,
+  strict: false,
+  allowUnionTypes: true,
+  addUsedSchema: false
+} as const;
+
+function addJsonFormats<T>(ajv: T): T {
+  (addFormats as unknown as (ajvInstance: T) => void)(ajv);
   return ajv;
+}
+
+function createDraft7Ajv(): AjvLike {
+  return addJsonFormats(new AjvDraft7(AJV_OPTIONS)) as unknown as AjvLike;
+}
+
+function createDraft2020Ajv(): AjvLike {
+  return addJsonFormats(new Ajv2020(AJV_OPTIONS)) as unknown as AjvLike;
+}
+
+function jsonSchemaDialect(schema: unknown): SupportedJsonSchemaDialect {
+  const schemaObject = asRecord(schema);
+  const schemaId = schemaObject?.$schema;
+
+  if (schemaId === undefined) return "2020-12";
+  if (typeof schemaId !== "string") {
+    throw new Error("Invalid JSON Schema: $schema must be a string when present");
+  }
+
+  const normalized = schemaId.toLowerCase();
+  if (normalized.includes("draft-07")) return "draft-07";
+  if (normalized.includes("2020-12")) return "2020-12";
+
+  throw new Error(
+    `Unsupported JSON Schema dialect: ${schemaId}. Supported dialects are draft-07 and 2020-12.`
+  );
+}
+
+function createAjvForSchema(schema: unknown): AjvLike {
+  const ajv = jsonSchemaDialect(schema) === "draft-07" ? createDraft7Ajv() : createDraft2020Ajv();
+  return ajv as unknown as AjvLike;
 }
 
 export function validateJsonSchema(schema: unknown): void {
@@ -19,7 +61,7 @@ export function validateJsonSchema(schema: unknown): void {
     throw new Error("Contract schema must be a JSON Schema object");
   }
 
-  const ajv = createAjv();
+  const ajv = createAjvForSchema(schema);
   const schemaIsValid = ajv.validateSchema(schema);
   if (!schemaIsValid) {
     throw new Error(`Invalid JSON Schema: ${ajv.errorsText(ajv.errors)}`);
@@ -151,7 +193,8 @@ function formatList(values: unknown[]): string {
 }
 
 export class JsonValidator {
-  private readonly ajv = createAjv();
+  private readonly draft7Ajv = createDraft7Ajv();
+  private readonly draft2020Ajv = createDraft2020Ajv();
   private readonly compiledSchemas = new WeakMap<object, ValidateFunction>();
 
   validateSchema(schema: unknown): void {
@@ -264,8 +307,12 @@ export class JsonValidator {
     if (cached) return cached;
 
     validateJsonSchema(contract.schema);
-    const compiled = this.ajv.compile(contract.schema);
+    const compiled = this.ajvForSchema(contract.schema).compile(contract.schema);
     this.compiledSchemas.set(schemaObject, compiled);
     return compiled;
+  }
+
+  private ajvForSchema(schema: unknown): AjvLike {
+    return jsonSchemaDialect(schema) === "draft-07" ? this.draft7Ajv : this.draft2020Ajv;
   }
 }

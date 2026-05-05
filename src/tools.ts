@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isSafeContractName } from "./security.js";
+import { SAFE_CONTRACT_NAME_PATTERN, isSafeContractName } from "./security.js";
 import type {
   EditContractResponse,
   FormattedValidationError,
@@ -111,19 +111,52 @@ export const REPAIR_CONTRACT_INSTRUCTIONS = [
 
 export type ToolHandlers = ReturnType<typeof createToolHandlers>;
 
+const contractNameJsonSchema = {
+  type: "string",
+  minLength: 1,
+  pattern: SAFE_CONTRACT_NAME_PATTERN
+} as const;
+
+const jsonObjectSchema = {
+  type: "object",
+  additionalProperties: true
+} as const;
+
+const stringArraySchema = {
+  type: "array",
+  items: { type: "string" }
+} as const;
+
+const unknownArraySchema = {
+  type: "array",
+  items: {}
+} as const;
+
+const validationErrorObjectSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    path: { type: "string" },
+    message: { type: "string" },
+    keyword: { type: "string" }
+  },
+  required: ["path", "message", "keyword"]
+} as const;
+
 const validationErrorInputSchema = {
   type: "array",
-  items: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      path: { type: "string" },
-      message: { type: "string" },
-      keyword: { type: "string" }
-    },
-    required: ["path", "message", "keyword"]
-  },
+  items: validationErrorObjectSchema,
   default: []
+} as const;
+
+const contractSummaryOutputSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    name: contractNameJsonSchema,
+    description: { type: "string" }
+  },
+  required: ["name"]
 } as const;
 
 export const toolDefinitions = [
@@ -134,6 +167,17 @@ export const toolDefinitions = [
       type: "object",
       additionalProperties: false,
       properties: {}
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        contracts: {
+          type: "array",
+          items: contractSummaryOutputSchema
+        }
+      },
+      required: ["contracts"]
     }
   },
   {
@@ -143,9 +187,22 @@ export const toolDefinitions = [
       type: "object",
       additionalProperties: false,
       properties: {
-        contract: { type: "string" }
+        contract: contractNameJsonSchema
       },
       required: ["contract"]
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        contract: contractNameJsonSchema,
+        description: { type: "string" },
+        rules: stringArraySchema,
+        operations: jsonObjectSchema,
+        schema: jsonObjectSchema,
+        examples: unknownArraySchema
+      },
+      required: ["contract", "description", "rules", "operations", "schema", "examples"]
     }
   },
   {
@@ -156,11 +213,41 @@ export const toolDefinitions = [
       type: "object",
       additionalProperties: false,
       properties: {
-        contract: { type: "string" },
+        contract: contractNameJsonSchema,
         input: { type: "string" },
         context: { type: "object", additionalProperties: true, default: {} }
       },
       required: ["contract", "input"]
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        contract: contractNameJsonSchema,
+        operation: { const: "create" },
+        instructions: stringArraySchema,
+        description: { type: "string" },
+        rules: stringArraySchema,
+        operationRules: stringArraySchema,
+        schema: jsonObjectSchema,
+        examples: unknownArraySchema,
+        operationExamples: unknownArraySchema,
+        input: { type: "string" },
+        context: jsonObjectSchema
+      },
+      required: [
+        "contract",
+        "operation",
+        "instructions",
+        "description",
+        "rules",
+        "operationRules",
+        "schema",
+        "examples",
+        "operationExamples",
+        "input",
+        "context"
+      ]
     }
   },
   {
@@ -171,12 +258,44 @@ export const toolDefinitions = [
       type: "object",
       additionalProperties: false,
       properties: {
-        contract: { type: "string" },
+        contract: contractNameJsonSchema,
         currentJson: {},
         input: { type: "string" },
         context: { type: "object", additionalProperties: true, default: {} }
       },
       required: ["contract", "currentJson", "input"]
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        contract: contractNameJsonSchema,
+        operation: { const: "edit" },
+        instructions: stringArraySchema,
+        description: { type: "string" },
+        rules: stringArraySchema,
+        operationRules: stringArraySchema,
+        schema: jsonObjectSchema,
+        examples: unknownArraySchema,
+        operationExamples: unknownArraySchema,
+        currentJson: {},
+        input: { type: "string" },
+        context: jsonObjectSchema
+      },
+      required: [
+        "contract",
+        "operation",
+        "instructions",
+        "description",
+        "rules",
+        "operationRules",
+        "schema",
+        "examples",
+        "operationExamples",
+        "currentJson",
+        "input",
+        "context"
+      ]
     }
   },
   {
@@ -186,10 +305,21 @@ export const toolDefinitions = [
       type: "object",
       additionalProperties: false,
       properties: {
-        contract: { type: "string" },
+        contract: contractNameJsonSchema,
         json: {}
       },
       required: ["contract", "json"]
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        valid: { type: "boolean" },
+        contract: contractNameJsonSchema,
+        json: {},
+        errors: validationErrorInputSchema
+      },
+      required: ["valid", "contract", "errors"]
     }
   },
   {
@@ -199,11 +329,25 @@ export const toolDefinitions = [
       type: "object",
       additionalProperties: false,
       properties: {
-        contract: { type: "string" },
+        contract: contractNameJsonSchema,
         invalidJson: {},
         validationErrors: validationErrorInputSchema
       },
       required: ["contract", "invalidJson"]
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        contract: contractNameJsonSchema,
+        instructions: stringArraySchema,
+        schema: jsonObjectSchema,
+        rules: stringArraySchema,
+        examples: unknownArraySchema,
+        invalidJson: {},
+        validationErrors: validationErrorInputSchema
+      },
+      required: ["contract", "instructions", "schema", "rules", "examples", "invalidJson", "validationErrors"]
     }
   },
   {
@@ -213,6 +357,18 @@ export const toolDefinitions = [
       type: "object",
       additionalProperties: false,
       properties: {}
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        loaded: { type: "number" },
+        contracts: {
+          type: "array",
+          items: contractNameJsonSchema
+        }
+      },
+      required: ["loaded", "contracts"]
     }
   }
 ] as const;
@@ -236,6 +392,20 @@ function requireOperation(contract: LoadedContract, operation: "create" | "edit"
 function formatValidationErrors(errors: FormattedValidationError[]): string {
   if (!errors.length) return "unknown validation error";
   return errors.map((error) => `${error.path || "/"}: ${error.message} (${error.keyword})`).join("; ");
+}
+
+function dedupeStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+
+  for (const value of values) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      deduped.push(value);
+    }
+  }
+
+  return deduped;
 }
 
 export function createToolHandlers(store: ContractStore, validator: JsonValidator) {
@@ -328,9 +498,15 @@ export function createToolHandlers(store: ContractStore, validator: JsonValidato
         ? providedErrors
         : dedupeValidationErrors([...validationResult.errors, ...providedErrors]);
 
+      const detailedInstructions = validator.buildRepairInstructions(
+        contract,
+        parsed.invalidJson,
+        validationErrors
+      );
+
       return {
         contract: contract.name,
-        instructions: REPAIR_CONTRACT_INSTRUCTIONS,
+        instructions: dedupeStrings([...REPAIR_CONTRACT_INSTRUCTIONS, ...detailedInstructions]),
         schema: contract.schema,
         rules: contract.rules,
         examples: contract.examples,

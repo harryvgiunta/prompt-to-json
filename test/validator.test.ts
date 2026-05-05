@@ -81,6 +81,32 @@ describe("JsonValidator", () => {
     expect(() => validateJsonSchema({ type: "invalid-type" })).toThrow(/Invalid JSON Schema/);
   });
 
+  it("supports draft-07 JSON Schema contracts", () => {
+    const validator = new JsonValidator();
+    const draft7Contract: LoadedContract = {
+      ...supportTicketContract,
+      schema: {
+        $schema: "http://json-schema.org/draft-07/schema#",
+        ...supportTicketContract.schema
+      }
+    };
+
+    expect(() => validateJsonSchema(draft7Contract.schema)).not.toThrow();
+    const result = validator.validateAgainstContract(draft7Contract, {
+      summary: "Users cannot log in after SSO update",
+      severity: "critical",
+      category: "authentication"
+    });
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects unsupported JSON Schema dialects with a clear message", () => {
+    expect(() => validateJsonSchema({ $schema: "https://json-schema.org/draft/2019-09/schema", type: "object" })).toThrow(
+      /Unsupported JSON Schema dialect/
+    );
+  });
+
   it("buildRepairInstructions creates concise guidance", () => {
     const validator = new JsonValidator();
     const instructions = validator.buildRepairInstructions(

@@ -6,7 +6,8 @@ export const MAX_CONTRACT_FILE_BYTES = 256 * 1024;
 export const MAX_SCHEMA_BYTES = 128 * 1024;
 export const MAX_EXAMPLES = 50;
 
-const SAFE_CONTRACT_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+export const SAFE_CONTRACT_NAME_PATTERN = String.raw`^(?!.*\.\.)(?!.*[\\/])[A-Za-z0-9][A-Za-z0-9._-]*$`;
+const SAFE_CONTRACT_NAME_RE = new RegExp(SAFE_CONTRACT_NAME_PATTERN);
 
 export function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined || value === "") return defaultValue;
@@ -14,13 +15,7 @@ export function parseBooleanEnv(value: string | undefined, defaultValue: boolean
 }
 
 export function isSafeContractName(name: string): boolean {
-  return (
-    SAFE_CONTRACT_NAME_RE.test(name) &&
-    !name.includes("..") &&
-    !name.includes("/") &&
-    !name.includes("\\") &&
-    !name.includes(path.sep)
-  );
+  return SAFE_CONTRACT_NAME_RE.test(name) && !name.includes(path.sep);
 }
 
 export function assertSafeContractName(name: string): void {
@@ -105,9 +100,4 @@ export function createLogger(debugEnabled: boolean): Logger {
       write("error", message, meta);
     }
   };
-}
-
-export function redactedUserInput(input: string, debugEnabled: boolean): string {
-  if (debugEnabled) return input;
-  return `[redacted input, ${input.length} chars]`;
 }
