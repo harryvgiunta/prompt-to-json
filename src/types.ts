@@ -36,7 +36,12 @@ export type LoadedContract = {
   sourcePath: string;
 };
 
-export type PublicContract = {
+export type ContractHashes = {
+  contractHash: string;
+  schemaHash: string;
+};
+
+export type PublicContract = ContractHashes & {
   name: string;
   description?: string;
   rules: string[];
@@ -45,7 +50,7 @@ export type PublicContract = {
   examples: unknown[];
 };
 
-export type ContractSummary = {
+export type ContractSummary = ContractHashes & {
   name: string;
   description?: string;
 };
@@ -94,7 +99,7 @@ export type ResourceDescription = {
   description?: string;
 };
 
-export type JsonContractResponse = {
+export type JsonContractResponse = ContractHashes & {
   contract: string;
   operation: "create";
   instructions: string[];
@@ -108,7 +113,7 @@ export type JsonContractResponse = {
   context: JsonObject;
 };
 
-export type EditContractResponse = {
+export type EditContractResponse = ContractHashes & {
   contract: string;
   operation: "edit";
   instructions: string[];
@@ -123,7 +128,7 @@ export type EditContractResponse = {
   context: JsonObject;
 };
 
-export type RepairContractResponse = {
+export type RepairContractResponse = ContractHashes & {
   contract: string;
   instructions: string[];
   schema: JsonObject;
@@ -131,4 +136,14 @@ export type RepairContractResponse = {
   examples: unknown[];
   invalidJson: unknown;
   validationErrors: FormattedValidationError[];
+};
+
+export type StatusResponse = {
+  server: "prompt-to-json";
+  version: string;
+  contractsDir: string;
+  loaded: number;
+  contracts: ContractSummary[];
+  watchContracts: boolean;
+  allowInvalidContracts: boolean;
 };

@@ -150,42 +150,168 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return undefined;
 }
 
-function getSchemaAtDataPath(schema: unknown, dataPath: string): Record<string, unknown> | undefined {
-  let current: unknown = schema;
+function getByJsonPointer(root: unknown, pointer: string): unknown {
+  if (pointer === "#" || pointer === "#/" || pointer === "") return root;
+  if (!pointer.startsWith("#/")) return undefined;
 
-  for (const segment of pointerSegments(dataPath)) {
+  let current: unknown = root;
+  for (const segment of pointer
+    .slice(2)
+    .split("/")
+    .map(unescapeJsonPointerSegment)) {
+    if (Array.isArray(current)) {
+      const index = Number(segment);
+      current = Number.isInteger(index) ? current[index] : undefined;
+      continue;
+    }
+
     const currentRecord = asRecord(current);
-    if (!currentRecord) return undefined;
-
-    const properties = asRecord(currentRecord.properties);
-    if (properties && Object.prototype.hasOwnProperty.call(properties, segment)) {
-      current = properties[segment];
-      continue;
+    if (!currentRecord || !Object.prototype.hasOwnProperty.call(currentRecord, segment)) {
+      return undefined;
     }
-
-    if (currentRecord.items !== undefined) {
-      current = currentRecord.items;
-      continue;
-    }
-
-    return undefined;
+    current = currentRecord[segment];
   }
 
-  return asRecord(current);
+  return current;
+}
+
+function compositionSchemas(schema: Record<string, unknown>): unknown[] {
+  const branches: unknown[] = [];
+  for (const keyword of ["allOf", "anyOf", "oneOf"] as const) {
+    const value = schema[keyword];
+    if (Array.isArray(value)) branches.push(...value);
+  }
+  return branches;
+}
+
+function numericIndex(segment: string): number | undefined {
+  if (!/^\d+$/.test(segment)) return undefined;
+  const index = Number(segment);
+  return Number.isSafeInteger(index) ? index : undefined;
+}
+
+function arrayItemSchemas(schema: Record<string, unknown>, segment: string): unknown[] {
+  const schemas: unknown[] = [];
+  const index = numericIndex(segment);
+
+  if (Array.isArray(schema.prefixItems) && index !== undefined && index < schema.prefixItems.length) {
+    schemas.push(schema.prefixItems[index]);
+  }
+
+  if (Array.isArray(schema.items) && index !== undefined && index < schema.items.length) {
+    schemas.push(schema.items[index]);
+  } else if (schema.items !== undefined && typeof schema.items !== "boolean") {
+    schemas.push(schema.items);
+  }
+
+  if (schemas.length === 0 && schema.additionalItems !== undefined && typeof schema.additionalItems !== "boolean") {
+    schemas.push(schema.additionalItems);
+  }
+
+  return schemas;
+}
+
+function childSchemasForSegment(schema: Record<string, unknown>, segment: string): unknown[] {
+  const schemas: unknown[] = [];
+  const properties = asRecord(schema.properties);
+
+  if (properties && Object.prototype.hasOwnProperty.call(properties, segment)) {
+    schemas.push(properties[segment]);
+  } else if (schema.additionalProperties !== undefined && typeof schema.additionalProperties !== "boolean") {
+    schemas.push(schema.additionalProperties);
+  }
+
+  schemas.push(...arrayItemSchemas(schema, segment));
+  return schemas;
+}
+
+function collectSchemaCandidatesAtPath(
+  root: unknown,
+  schema: unknown,
+  segments: string[],
+  seenRefs = new Set<string>(),
+  depth = 0
+): Record<string, unknown>[] {
+  if (depth > 64) return [];
+
+  const schemaRecord = asRecord(schema);
+  if (!schemaRecord) return [];
+
+  const directCandidates: Record<string, unknown>[] = [schemaRecord];
+  const ref = schemaRecord.$ref;
+  if (typeof ref === "string" && ref.startsWith("#") && !seenRefs.has(ref)) {
+    const nextSeenRefs = new Set(seenRefs);
+    nextSeenRefs.add(ref);
+    directCandidates.push(...collectSchemaCandidatesAtPath(root, getByJsonPointer(root, ref), [], nextSeenRefs, depth + 1));
+  }
+
+  if (segments.length === 0) {
+    const terminalCandidates = [...directCandidates];
+    for (const branch of compositionSchemas(schemaRecord)) {
+      terminalCandidates.push(...collectSchemaCandidatesAtPath(root, branch, [], seenRefs, depth + 1));
+    }
+    return terminalCandidates;
+  }
+
+  const [segment, ...remaining] = segments;
+  const childCandidates: Record<string, unknown>[] = [];
+  for (const candidate of directCandidates) {
+    for (const childSchema of childSchemasForSegment(candidate, segment)) {
+      childCandidates.push(...collectSchemaCandidatesAtPath(root, childSchema, remaining, seenRefs, depth + 1));
+    }
+  }
+
+  for (const branch of compositionSchemas(schemaRecord)) {
+    childCandidates.push(...collectSchemaCandidatesAtPath(root, branch, segments, seenRefs, depth + 1));
+  }
+
+  return childCandidates;
+}
+
+function schemaCandidatesAtDataPath(schema: unknown, dataPath: string): Record<string, unknown>[] {
+  const candidates = collectSchemaCandidatesAtPath(schema, schema, pointerSegments(dataPath));
+  const seen = new Set<Record<string, unknown>>();
+  return candidates.filter((candidate) => {
+    if (seen.has(candidate)) return false;
+    seen.add(candidate);
+    return true;
+  });
 }
 
 function enumValuesForPath(contract: LoadedContract, path: string): unknown[] | undefined {
-  const schemaAtPath = getSchemaAtDataPath(contract.schema, path);
-  const enumValues = schemaAtPath?.enum;
-  return Array.isArray(enumValues) ? enumValues : undefined;
+  const enumValues: unknown[] = [];
+  const seen = new Set<string>();
+
+  for (const schemaAtPath of schemaCandidatesAtDataPath(contract.schema, path)) {
+    if (!Array.isArray(schemaAtPath.enum)) continue;
+    for (const value of schemaAtPath.enum) {
+      const key = JSON.stringify(value);
+      if (!seen.has(key)) {
+        seen.add(key);
+        enumValues.push(value);
+      }
+    }
+  }
+
+  return enumValues.length ? enumValues : undefined;
 }
 
 function typeForPath(contract: LoadedContract, path: string): string | undefined {
-  const schemaAtPath = getSchemaAtDataPath(contract.schema, path);
-  const type = schemaAtPath?.type;
-  if (Array.isArray(type)) return type.join(" or ");
-  if (typeof type === "string") return type;
-  return undefined;
+  const types: string[] = [];
+  const seen = new Set<string>();
+
+  for (const schemaAtPath of schemaCandidatesAtDataPath(contract.schema, path)) {
+    const type = schemaAtPath.type;
+    const typeValues = Array.isArray(type) ? type : [type];
+    for (const value of typeValues) {
+      if (typeof value === "string" && !seen.has(value)) {
+        seen.add(value);
+        types.push(value);
+      }
+    }
+  }
+
+  return types.length ? types.join(" or ") : undefined;
 }
 
 function formatList(values: unknown[]): string {

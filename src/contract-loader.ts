@@ -21,6 +21,7 @@ import type {
   Logger,
   PublicContract
 } from "./types.js";
+import { sha256Json } from "./hashing.js";
 import { JsonValidator, validateJsonSchema } from "./validator.js";
 
 const noopLogger: Logger = {
@@ -234,7 +235,8 @@ export class ContractStore extends EventEmitter {
   listSummaries(): ContractSummary[] {
     return this.listContracts().map((contract) => ({
       name: contract.name,
-      ...(contract.description ? { description: contract.description } : {})
+      ...(contract.description ? { description: contract.description } : {}),
+      ...this.contractHashes(contract)
     }));
   }
 
@@ -252,7 +254,21 @@ export class ContractStore extends EventEmitter {
     return this.contracts.has(name);
   }
 
+  contractHashes(contract: LoadedContract) {
+    return {
+      contractHash: sha256Json(this.publicContractBody(contract)),
+      schemaHash: sha256Json(contract.schema)
+    };
+  }
+
   toPublicContract(contract: LoadedContract): PublicContract {
+    return {
+      ...this.publicContractBody(contract),
+      ...this.contractHashes(contract)
+    };
+  }
+
+  private publicContractBody(contract: LoadedContract) {
     return {
       name: contract.name,
       ...(contract.description ? { description: contract.description } : {}),

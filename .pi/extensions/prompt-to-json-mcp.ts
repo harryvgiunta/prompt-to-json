@@ -335,12 +335,12 @@ async function callMcpTool(ctx: ExtensionContext, toolName: string, args: JsonOb
 }
 
 async function listContractsForStatus(ctx: ExtensionContext): Promise<{ names: string[]; loaded?: number }> {
-	const output = await callMcpTool(ctx, "list_contracts", {});
-	const result = output.details.result as { structuredContent?: { contracts?: Array<{ name?: unknown }> } };
+	const output = await callMcpTool(ctx, "status", {});
+	const result = output.details.result as { structuredContent?: { contracts?: Array<{ name?: unknown }>; loaded?: unknown } };
 	const contracts = result.structuredContent?.contracts ?? [];
 	return {
 		names: contracts.map((contract) => String(contract.name ?? "")).filter(Boolean),
-		loaded: contracts.length,
+		loaded: typeof result.structuredContent?.loaded === "number" ? result.structuredContent.loaded : contracts.length,
 	};
 }
 
@@ -354,6 +354,18 @@ export default function promptToJsonMcpExtension(pi: ExtensionAPI) {
 		parameters: EmptyParams,
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			return callMcpTool(ctx, "list_contracts", {});
+		},
+	});
+
+	pi.registerTool({
+		name: "ptj_status",
+		label: "prompt-to-json status",
+		description: "Show local prompt-to-json MCP server status, loaded contracts, and contract hashes.",
+		promptSnippet: "Show prompt-to-json MCP status",
+		promptGuidelines: PROMPT_TO_JSON_GUIDELINES,
+		parameters: EmptyParams,
+		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+			return callMcpTool(ctx, "status", {});
 		},
 	});
 

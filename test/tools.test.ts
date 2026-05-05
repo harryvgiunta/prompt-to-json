@@ -6,6 +6,8 @@ import { ContractStore } from "../src/contract-loader.js";
 import { createToolHandlers, toolDefinitions } from "../src/tools.js";
 import { JsonValidator } from "../src/validator.js";
 
+const hashPattern = /^sha256:[a-f0-9]{64}$/;
+
 const supportTicketContract = {
   description: "Convert natural language into a support ticket object.",
   rules: [
@@ -67,6 +69,7 @@ describe("tool handlers", () => {
       "get_edit_contract",
       "validate_json",
       "get_repair_contract",
+      "status",
       "reload_contracts"
     ]);
   });
@@ -76,7 +79,9 @@ describe("tool handlers", () => {
       contracts: [
         {
           name: "support-ticket",
-          description: "Convert natural language into a support ticket object."
+          description: "Convert natural language into a support ticket object.",
+          contractHash: expect.stringMatching(hashPattern),
+          schemaHash: expect.stringMatching(hashPattern)
         }
       ]
     });
@@ -87,6 +92,8 @@ describe("tool handlers", () => {
 
     expect(result).toMatchObject({
       contract: "support-ticket",
+      contractHash: expect.stringMatching(hashPattern),
+      schemaHash: expect.stringMatching(hashPattern),
       description: "Convert natural language into a support ticket object.",
       rules: supportTicketContract.rules,
       schema: supportTicketContract.schema,
@@ -102,6 +109,8 @@ describe("tool handlers", () => {
     });
 
     expect(result.contract).toBe("support-ticket");
+    expect(result.contractHash).toMatch(hashPattern);
+    expect(result.schemaHash).toMatch(hashPattern);
     expect(result.operation).toBe("create");
     expect(result.instructions).toEqual([
       "Convert the input into JSON.",
@@ -138,6 +147,8 @@ describe("tool handlers", () => {
     });
 
     expect(result.contract).toBe("support-ticket");
+    expect(result.contractHash).toMatch(hashPattern);
+    expect(result.schemaHash).toMatch(hashPattern);
     expect(result.operation).toBe("edit");
     expect(result.instructions).toEqual([
       "Start from currentJson.",
@@ -202,6 +213,27 @@ describe("tool handlers", () => {
     }
   });
 
+  it("status returns server and loaded contract metadata", async () => {
+    const result = await state.handlers.status({});
+
+    expect(result).toMatchObject({
+      server: "prompt-to-json",
+      version: "0.1.0",
+      contractsDir: state.store.contractsDir,
+      loaded: 1,
+      watchContracts: false,
+      allowInvalidContracts: false,
+      contracts: [
+        {
+          name: "support-ticket",
+          description: "Convert natural language into a support ticket object.",
+          contractHash: expect.stringMatching(hashPattern),
+          schemaHash: expect.stringMatching(hashPattern)
+        }
+      ]
+    });
+  });
+
   it("reload_contracts rescans the folder", async () => {
     await fs.writeFile(
       path.join(state.dir, "search-query.json"),
@@ -231,6 +263,8 @@ describe("tool handlers", () => {
     });
 
     expect(result.contract).toBe("support-ticket");
+    expect(result.contractHash).toMatch(hashPattern);
+    expect(result.schemaHash).toMatch(hashPattern);
     expect(result.instructions).toEqual(
       expect.arrayContaining([
         "Repair the JSON so it validates against the schema.",

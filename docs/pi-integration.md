@@ -37,6 +37,7 @@ The extension registers these Pi tools:
 | Pi tool | MCP tool |
 | --- | --- |
 | `ptj_list_contracts` | `list_contracts` |
+| `ptj_status` | `status` |
 | `ptj_read_contract` | `read_contract` |
 | `ptj_get_json_contract` | `get_json_contract` |
 | `ptj_get_edit_contract` | `get_edit_contract` |
@@ -50,7 +51,7 @@ The `ptj_` prefix avoids collisions with Pi's built-in tools and makes the workf
 
 ### `/ptj-status`
 
-Starts the MCP server if needed, lists loaded contracts, and shows the contracts directory.
+Starts the MCP server if needed, calls the MCP `status` tool, lists loaded contracts, and shows the contracts directory.
 
 ```text
 /ptj-status
@@ -178,7 +179,7 @@ pi -e .\.pi\extensions\prompt-to-json-mcp.ts -p "Use ptj_list_contracts to list 
 Only allow prompt-to-json tools:
 
 ```powershell
-pi -e .\.pi\extensions\prompt-to-json-mcp.ts --tools ptj_list_contracts,ptj_read_contract,ptj_get_json_contract,ptj_get_edit_contract,ptj_validate_json,ptj_get_repair_contract,ptj_reload_contracts -p "Use prompt-to-json with support-ticket. Input: Urgent, users cannot log in after SSO update. Generate and validate final JSON."
+pi -e .\.pi\extensions\prompt-to-json-mcp.ts --tools ptj_list_contracts,ptj_status,ptj_read_contract,ptj_get_json_contract,ptj_get_edit_contract,ptj_validate_json,ptj_get_repair_contract,ptj_reload_contracts -p "Use prompt-to-json with support-ticket. Input: Urgent, users cannot log in after SSO update. Generate and validate final JSON."
 ```
 
 ## Correct mental model

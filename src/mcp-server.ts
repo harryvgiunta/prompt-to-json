@@ -36,7 +36,7 @@ export type PromptToJsonMcpServer = {
   close(): Promise<void>;
 };
 
-const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.1.0";
 
 function asStructuredContent(value: unknown): Record<string, unknown> {
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
@@ -101,7 +101,10 @@ export async function createPromptToJsonMcpServer(
   await store.reload({ emitChange: false });
 
   const validator = new JsonValidator();
-  const toolHandlers = createToolHandlers(store, validator);
+  const toolHandlers = createToolHandlers(store, validator, {
+    serverVersion: SERVER_VERSION,
+    watchContracts
+  });
   const promptHandlers = createPromptHandlers(store, validator);
 
   const server = new Server(

@@ -74,6 +74,13 @@ Or run without installing:
 npx prompt-to-json
 ```
 
+Validate contracts in CI without starting MCP:
+
+```bash
+npx prompt-to-json validate --contracts ./json-contracts
+npx prompt-to-json lint --strict --contracts ./json-contracts
+```
+
 By default, the server starts as a local stdio MCP server and loads contracts from:
 
 ```text
@@ -97,6 +104,64 @@ By default, the server starts as a local stdio MCP server and loads contracts fr
 ```
 
 Adding a new behavior only requires adding a new `.json` file to the contracts folder. No MCP config change is required.
+
+### MCP host config snippets
+
+Most MCP hosts use the same stdio shape. Adapt paths for your machine and point `PROMPT_TO_JSON_CONTRACTS_DIR` at your app-owned contracts folder.
+
+#### Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "prompt-to-json": {
+      "command": "npx",
+      "args": ["prompt-to-json"],
+      "env": {
+        "PROMPT_TO_JSON_CONTRACTS_DIR": "/absolute/path/to/json-contracts"
+      }
+    }
+  }
+}
+```
+
+#### Cursor / Windsurf / VS Code MCP-compatible hosts
+
+```json
+{
+  "mcpServers": {
+    "prompt-to-json": {
+      "command": "npx",
+      "args": ["prompt-to-json"],
+      "env": {
+        "PROMPT_TO_JSON_CONTRACTS_DIR": "./json-contracts"
+      }
+    }
+  }
+}
+```
+
+#### Continue or generic stdio MCP clients
+
+```json
+{
+  "name": "prompt-to-json",
+  "command": "npx",
+  "args": ["prompt-to-json"],
+  "env": {
+    "PROMPT_TO_JSON_CONTRACTS_DIR": "./json-contracts"
+  }
+}
+```
+
+If `npx` startup is too slow or your host requires explicit executables, install globally and use:
+
+```json
+{
+  "command": "prompt-to-json",
+  "args": []
+}
+```
 
 ## Adopt in your agent/app
 
@@ -313,7 +378,9 @@ Output:
   "contracts": [
     {
       "name": "support-ticket",
-      "description": "Convert natural language into a support ticket object."
+      "description": "Convert natural language into a support ticket object.",
+      "contractHash": "sha256:...",
+      "schemaHash": "sha256:..."
     }
   ]
 }
@@ -329,7 +396,9 @@ Input:
 }
 ```
 
-Returns the selected contract's description, rules, operations, schema, and examples.
+Returns the selected contract's description, rules, operations, schema, examples, `contractHash`, and `schemaHash`.
+
+Hashes are deterministic SHA-256 values over the normalized contract/schema payload. They are for logging, cache keys, and audit trails; contract files still use Git for versioning.
 
 ### `get_json_contract`
 
@@ -348,6 +417,8 @@ Output:
 ```json
 {
   "contract": "support-ticket",
+  "contractHash": "sha256:...",
+  "schemaHash": "sha256:...",
   "operation": "create",
   "instructions": [
     "Convert the input into JSON.",
@@ -398,6 +469,8 @@ Output:
 ```json
 {
   "contract": "create-filter",
+  "contractHash": "sha256:...",
+  "schemaHash": "sha256:...",
   "operation": "edit",
   "instructions": [
     "Start from currentJson.",
@@ -522,6 +595,8 @@ Output:
 ```json
 {
   "contract": "support-ticket",
+  "contractHash": "sha256:...",
+  "schemaHash": "sha256:...",
   "instructions": [
     "Repair the JSON so it validates against the schema.",
     "Return JSON only.",
@@ -539,6 +614,37 @@ Output:
 ```
 
 The agent/model uses this repair contract to produce corrected JSON. The MCP server does not repair by calling a model. When validation errors are available, `instructions` also includes deterministic field-specific repair hints such as adding missing required fields, removing extra fields, or choosing allowed enum values.
+
+### `status`
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+{
+  "server": "prompt-to-json",
+  "version": "0.1.0",
+  "contractsDir": "/absolute/path/to/json-contracts",
+  "loaded": 3,
+  "contracts": [
+    {
+      "name": "support-ticket",
+      "description": "Convert natural language into a support ticket object.",
+      "contractHash": "sha256:...",
+      "schemaHash": "sha256:..."
+    }
+  ],
+  "watchContracts": true,
+  "allowInvalidContracts": false
+}
+```
+
+Use this to debug host configuration, loaded contracts, and the exact contract/schema hashes in use.
 
 ### `reload_contracts`
 
@@ -660,6 +766,42 @@ The model returns the complete edited object:
 ```
 
 Then the agent validates that final edited object with `validate_json`.
+
+## Contract validation and linting CLI
+
+Use the CLI in CI or pre-commit checks without starting an MCP host:
+
+```bash
+prompt-to-json validate --contracts ./json-contracts
+```
+
+`validate` loads every `.json` contract, checks the contract shape, validates the JSON Schema, and validates example outputs against the schema. It exits nonzero if any contract is invalid.
+
+For advisory checks:
+
+```bash
+prompt-to-json lint --contracts ./json-contracts
+prompt-to-json lint --strict --contracts ./json-contracts
+```
+
+`lint` includes the same validation checks, then prints generic schema-quality warnings such as empty schemas, missing examples, object schemas without `additionalProperties:false`, or broad `additionalProperties:true`. `--strict` exits nonzero when warnings are found.
+
+Both commands support machine-readable output:
+
+```bash
+prompt-to-json validate --json --contracts ./json-contracts
+prompt-to-json lint --json --strict --contracts ./json-contracts
+```
+
+## Minimal app integration example
+
+A tiny Node MCP client is included at [`examples/node-client`](examples/node-client). It shows the app-side loop:
+
+```text
+get_json_contract -> your model -> validate_json -> optional get_repair_contract -> your model -> validate_json
+```
+
+It intentionally does not call an LLM provider. Replace its placeholder `getModelJson()` with your own model call.
 
 ## Studio quickstart
 

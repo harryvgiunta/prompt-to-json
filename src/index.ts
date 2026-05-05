@@ -1,8 +1,15 @@
 #!/usr/bin/env node
+import { runCli } from "./cli.js";
 import { optionsFromEnvironment, startStdioMcpServer } from "./mcp-server.js";
 import { createLogger, parseBooleanEnv } from "./security.js";
 
 async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  if (args.length > 0 && args[0] !== "serve") {
+    process.exitCode = await runCli(args, process.env);
+    return;
+  }
+
   const debug = parseBooleanEnv(process.env.DEBUG, false);
   const logger = createLogger(debug);
   const transport = process.env.MCP_TRANSPORT ?? "stdio";

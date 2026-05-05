@@ -7,6 +7,7 @@ import type {
   JsonObject,
   LoadedContract,
   RepairContractResponse,
+  StatusResponse,
   ValidationResult
 } from "./types.js";
 import type { ContractStore } from "./contract-loader.js";
@@ -149,14 +150,25 @@ const validationErrorInputSchema = {
   default: []
 } as const;
 
+const hashJsonSchema = {
+  type: "string",
+  pattern: "^sha256:[a-f0-9]{64}$"
+} as const;
+
+const contractHashProperties = {
+  contractHash: hashJsonSchema,
+  schemaHash: hashJsonSchema
+} as const;
+
 const contractSummaryOutputSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
     name: contractNameJsonSchema,
-    description: { type: "string" }
+    description: { type: "string" },
+    ...contractHashProperties
   },
-  required: ["name"]
+  required: ["name", "contractHash", "schemaHash"]
 } as const;
 
 export const toolDefinitions = [
@@ -196,13 +208,14 @@ export const toolDefinitions = [
       additionalProperties: false,
       properties: {
         contract: contractNameJsonSchema,
+        ...contractHashProperties,
         description: { type: "string" },
         rules: stringArraySchema,
         operations: jsonObjectSchema,
         schema: jsonObjectSchema,
         examples: unknownArraySchema
       },
-      required: ["contract", "description", "rules", "operations", "schema", "examples"]
+      required: ["contract", "contractHash", "schemaHash", "description", "rules", "operations", "schema", "examples"]
     }
   },
   {
@@ -224,6 +237,7 @@ export const toolDefinitions = [
       additionalProperties: false,
       properties: {
         contract: contractNameJsonSchema,
+        ...contractHashProperties,
         operation: { const: "create" },
         instructions: stringArraySchema,
         description: { type: "string" },
@@ -237,6 +251,8 @@ export const toolDefinitions = [
       },
       required: [
         "contract",
+        "contractHash",
+        "schemaHash",
         "operation",
         "instructions",
         "description",
@@ -270,6 +286,7 @@ export const toolDefinitions = [
       additionalProperties: false,
       properties: {
         contract: contractNameJsonSchema,
+        ...contractHashProperties,
         operation: { const: "edit" },
         instructions: stringArraySchema,
         description: { type: "string" },
@@ -284,6 +301,8 @@ export const toolDefinitions = [
       },
       required: [
         "contract",
+        "contractHash",
+        "schemaHash",
         "operation",
         "instructions",
         "description",
@@ -340,6 +359,7 @@ export const toolDefinitions = [
       additionalProperties: false,
       properties: {
         contract: contractNameJsonSchema,
+        ...contractHashProperties,
         instructions: stringArraySchema,
         schema: jsonObjectSchema,
         rules: stringArraySchema,
@@ -347,7 +367,51 @@ export const toolDefinitions = [
         invalidJson: {},
         validationErrors: validationErrorInputSchema
       },
-      required: ["contract", "instructions", "schema", "rules", "examples", "invalidJson", "validationErrors"]
+      required: [
+        "contract",
+        "contractHash",
+        "schemaHash",
+        "instructions",
+        "schema",
+        "rules",
+        "examples",
+        "invalidJson",
+        "validationErrors"
+      ]
+    }
+  },
+  {
+    name: "status",
+    description: "Return prompt-to-json MCP server status and loaded contract metadata.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        server: { const: "prompt-to-json" },
+        version: { type: "string" },
+        contractsDir: { type: "string" },
+        loaded: { type: "number" },
+        contracts: {
+          type: "array",
+          items: contractSummaryOutputSchema
+        },
+        watchContracts: { type: "boolean" },
+        allowInvalidContracts: { type: "boolean" }
+      },
+      required: [
+        "server",
+        "version",
+        "contractsDir",
+        "loaded",
+        "contracts",
+        "watchContracts",
+        "allowInvalidContracts"
+      ]
     }
   },
   {
@@ -408,7 +472,16 @@ function dedupeStrings(values: string[]): string[] {
   return deduped;
 }
 
-export function createToolHandlers(store: ContractStore, validator: JsonValidator) {
+type ToolRuntimeOptions = {
+  serverVersion?: string;
+  watchContracts?: boolean;
+};
+
+export function createToolHandlers(
+  store: ContractStore,
+  validator: JsonValidator,
+  runtimeOptions: ToolRuntimeOptions = {}
+) {
   return {
     async list_contracts(input: unknown = {}) {
       parseInput(EmptyInputSchema, input);
@@ -422,6 +495,7 @@ export function createToolHandlers(store: ContractStore, validator: JsonValidato
       const contract = store.getContract(parsed.contract);
       return {
         contract: contract.name,
+        ...store.contractHashes(contract),
         description: descriptionOrEmpty(contract.description),
         rules: contract.rules,
         operations: contract.operations,
@@ -438,6 +512,7 @@ export function createToolHandlers(store: ContractStore, validator: JsonValidato
 
       return {
         contract: contract.name,
+        ...store.contractHashes(contract),
         operation: "create",
         instructions: JSON_CONTRACT_INSTRUCTIONS,
         description: descriptionOrEmpty(contract.description),
@@ -469,6 +544,7 @@ export function createToolHandlers(store: ContractStore, validator: JsonValidato
       const context = parsed.context as JsonObject;
       return {
         contract: contract.name,
+        ...store.contractHashes(contract),
         operation: "edit",
         instructions: EDIT_CONTRACT_INSTRUCTIONS,
         description: descriptionOrEmpty(contract.description),
@@ -506,12 +582,27 @@ export function createToolHandlers(store: ContractStore, validator: JsonValidato
 
       return {
         contract: contract.name,
+        ...store.contractHashes(contract),
         instructions: dedupeStrings([...REPAIR_CONTRACT_INSTRUCTIONS, ...detailedInstructions]),
         schema: contract.schema,
         rules: contract.rules,
         examples: contract.examples,
         invalidJson: parsed.invalidJson,
         validationErrors
+      };
+    },
+
+    async status(input: unknown = {}): Promise<StatusResponse> {
+      parseInput(EmptyInputSchema, input);
+      const contracts = store.listSummaries();
+      return {
+        server: "prompt-to-json",
+        version: runtimeOptions.serverVersion ?? "0.1.0",
+        contractsDir: store.contractsDir,
+        loaded: contracts.length,
+        contracts,
+        watchContracts: runtimeOptions.watchContracts ?? false,
+        allowInvalidContracts: store.allowInvalidContracts
       };
     },
 

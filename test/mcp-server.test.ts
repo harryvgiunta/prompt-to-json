@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPromptToJsonMcpServer, type PromptToJsonMcpServer } from "../src/mcp-server.js";
 
 const require = createRequire(import.meta.url);
+const hashPattern = /^sha256:[a-f0-9]{64}$/;
 
 const supportTicketContract = {
   description: "Convert natural language into a support ticket object.",
@@ -104,6 +105,7 @@ describe("prompt-to-json MCP server", () => {
       "get_edit_contract",
       "validate_json",
       "get_repair_contract",
+      "status",
       "reload_contracts"
     ]);
     expect(tools.tools.find((tool) => tool.name === "validate_json")?.outputSchema).toMatchObject({
@@ -119,7 +121,9 @@ describe("prompt-to-json MCP server", () => {
       contracts: [
         {
           name: "support-ticket",
-          description: "Convert natural language into a support ticket object."
+          description: "Convert natural language into a support ticket object.",
+          contractHash: expect.stringMatching(hashPattern),
+          schemaHash: expect.stringMatching(hashPattern)
         }
       ]
     });
@@ -140,6 +144,22 @@ describe("prompt-to-json MCP server", () => {
       contract: "support-ticket"
     });
 
+    const status = await state.client.callTool({ name: "status", arguments: {} });
+    expect(status.structuredContent).toMatchObject({
+      server: "prompt-to-json",
+      version: "0.1.0",
+      loaded: 1,
+      watchContracts: false,
+      allowInvalidContracts: false,
+      contracts: [
+        {
+          name: "support-ticket",
+          contractHash: expect.stringMatching(hashPattern),
+          schemaHash: expect.stringMatching(hashPattern)
+        }
+      ]
+    });
+
     const resources = await state.client.listResources();
     expect(resources.resources).toEqual([
       expect.objectContaining({
@@ -156,6 +176,8 @@ describe("prompt-to-json MCP server", () => {
     });
     expect(JSON.parse(String(resource.contents[0].text))).toMatchObject({
       name: "support-ticket",
+      contractHash: expect.stringMatching(hashPattern),
+      schemaHash: expect.stringMatching(hashPattern),
       schema: supportTicketContract.schema
     });
 

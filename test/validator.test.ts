@@ -107,6 +107,42 @@ describe("JsonValidator", () => {
     );
   });
 
+  it("buildRepairInstructions follows $ref and composition for generic schema hints", () => {
+    const validator = new JsonValidator();
+    const contract: LoadedContract = {
+      name: "generic-composed",
+      rules: [],
+      operations: {
+        create: { enabled: true, rules: [], examples: [] },
+        edit: { enabled: true, return: "full_object", rules: [], examples: [] }
+      },
+      sourcePath: "generic-composed.json",
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        allOf: [
+          {
+            properties: {
+              state: { $ref: "#/$defs/state" }
+            },
+            required: ["state"]
+          }
+        ],
+        $defs: {
+          state: {
+            type: "string",
+            enum: ["open", "closed"]
+          }
+        }
+      },
+      examples: []
+    };
+
+    const instructions = validator.buildRepairInstructions(contract, { state: "pending" });
+
+    expect(instructions).toContain("Set /state to one of: open, closed.");
+  });
+
   it("buildRepairInstructions creates concise guidance", () => {
     const validator = new JsonValidator();
     const instructions = validator.buildRepairInstructions(
