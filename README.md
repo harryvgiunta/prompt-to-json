@@ -929,6 +929,14 @@ Then try:
 
 See [`docs/pi-integration.md`](docs/pi-integration.md) for the full setup and test prompts.
 
+## Documentation site and content strategy
+
+The `docs/` folder can be published directly with GitHub Pages from the `/docs` branch folder setting.
+
+- [`docs/index.md`](docs/index.md) is the docs landing page.
+- [`docs/github-pages.md`](docs/github-pages.md) explains how to enable GitHub Pages.
+- [`docs/content-marketing-plan.md`](docs/content-marketing-plan.md) contains the short-form video/content plan for positioning `prompt-to-json` around structured output, MCP validation, and production-safe JSON flows.
+
 ## Git-controlled behavior
 
 The `json-contracts/` folder is the product surface.

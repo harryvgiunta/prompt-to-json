@@ -1,0 +1,6 @@
+title: prompt-to-json
+description: Local MCP contracts and validation for reliable LLM JSON output.
+theme: jekyll-theme-minimal
+markdown: kramdown
+plugins:
+  - jekyll-seo-tag
